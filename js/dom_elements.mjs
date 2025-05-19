@@ -1,10 +1,10 @@
 // js/dom_elements.mjs
 
-// Cache elements to avoid repeated lookups if preferred, or just query on demand.
 const elementsCache = {};
 
 export function getElementById(id) {
-    if (elementsCache[id]) {
+    // For modules, document is globally available.
+    if (elementsCache[id] && document.body.contains(elementsCache[id])) { // Check if still in DOM
         return elementsCache[id];
     }
     const element = document.getElementById(id);
@@ -14,16 +14,18 @@ export function getElementById(id) {
     return element;
 }
 
-// Specific element getters can be added for convenience
+// Script 1
 export const getOutputDivS1 = () => getElementById('output');
 export const getXssTargetDiv = () => getElementById('xss-target-div');
 export const getRunBtnS1 = () => getElementById('runBtnS1');
 
+// Script 2
 export const getOutputCanvasS2 = () => getElementById('output-canvas');
 export const getInteractiveCanvasS2 = () => getElementById('interactive-canvas');
 export const getCanvasCoordStatusS2 = () => getElementById('canvas-coord-status');
 export const getRunBtnCanvasS2 = () => getElementById('runCanvasBtnS2');
 
+// Script 3
 export const getOutputAdvancedS3 = () => getElementById('output-advanced');
 export const getRopGadgetsInput = () => getElementById('rop-gadgets-input');
 export const getRopChainInput = () => getElementById('rop-chain-input');
@@ -34,9 +36,10 @@ export const getBuildRopChainBtn = () => getElementById('buildRopChainBtn');
 export const getViewMemoryBtn = () => getElementById('viewMemoryBtn');
 
 
-// Call this once in main.mjs if you want to pre-cache common elements
 export function cacheCommonElements() {
-    getOutputDivS1();
-    getXssTargetDiv();
-    // ... cache others if needed
+    // Pre-cache elements if needed, called from main.mjs
+    getRunBtnS1();
+    getRunBtnCanvasS2();
+    getRunBtnAdvancedS3();
+    // Add others if frequently accessed and critical to cache
 }
