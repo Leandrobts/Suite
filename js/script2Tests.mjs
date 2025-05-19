@@ -8,6 +8,21 @@ import { getLeakedValueS1 } from './script1Tests.mjs'; // Importação crucial
 const SHORT_PAUSE_CANVAS_S2 = 50;
 const MEDIUM_PAUSE_S2 = 500;
 
+export async function testWebGLCheckS2() { /* ... */ }
+export async function testAdvancedPPS2() { /* ... */ }
+export async function testOOBWriteMetadataS2() { /* ... (com a lógica que completamos) ... */ }
+// Exporte outros testes do S2 conforme os implementa completamente:
+// export async function testOOBReadEnhancedS2() { /* ... */ }
+// export async function testWebGLDeeperPlusS2() { /* ... */ }
+// export async function testOOBWriteToImageDataCheckS2() { /* ... */ }
+export async function testFileSystemAccessS2() { /* ... (lógica original) ... */ } // Adicione a lógica completa se ainda não estiver
+export async function testWebGPUCheckS2() { /* ... (lógica original) ... */ } // Adicione a lógica completa se ainda não estiver
+
+export async function runCanvasTest() { /* ... (mantém esta, que chama runCanvasTestSequenceS2) ... */ }
+export function cleanupScript2() { /* ... */ }
+// runCanvasTestSequenceS2, drawInteractiveAreasS2, etc., podem permanecer como funções internas
+// a menos que você queira chamá-las diretamente de fora por algum motivo.
+
 let canvasElementS2 = null;
 let ctxS2 = null;
 // ... (outras variáveis de estado do S2 como glContextS2, gpuAdapterS2, etc. da resposta anterior)
