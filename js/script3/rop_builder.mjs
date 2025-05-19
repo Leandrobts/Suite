@@ -1,9 +1,9 @@
 // js/script3/rop_builder.mjs
 import { logS3 } from './s3_utils.mjs';
 import { getRopGadgetsInput, getRopChainInput } from '../dom_elements.mjs';
-import { AdvancedInt64 } from '../utils.mjs'; // Assuming AdvancedInt64 is needed
+import { AdvancedInt64 } from '../utils.mjs';
 
-export function buildRopChainFromUI() {
+export function buildRopChain() { // Renomeado para corresponder ao HTML original
     const FNAME = "buildRopChain";
     logS3("--- Construtor de Cadeia ROP (Conceitual) ---", "tool", FNAME);
     
@@ -14,7 +14,6 @@ export function buildRopChainFromUI() {
         logS3("Elementos de input ROP não encontrados.", "error", FNAME);
         return;
     }
-
     const gadgetsInput = gadgetsInputEl.value.trim();
     const chainInput = chainInputEl.value.trim();
 
@@ -29,7 +28,7 @@ export function buildRopChainFromUI() {
             if (line.trim()) {
                 const parts = line.split('=');
                 if (parts.length === 2) {
-                    const addr = new AdvancedInt64(parts[0].trim()); // Example, parsing might be more robust
+                    const addr = new AdvancedInt64(parts[0].trim());
                     gadgetMap.set(parts[1].trim(), addr);
                 }
             }
@@ -44,31 +43,36 @@ export function buildRopChainFromUI() {
 
     const ropChain = [];
     const chainSteps = chainInput.split('\n');
-    // ... (rest of the ROP chain building logic from original script) ...
-    logS3("Construindo cadeia ROP (lógica completa não inclusa nesta demo)...", "info", FNAME);
-    chainSteps.forEach(step => {
-        if(gadgetMap.has(step.trim())) {
-            ropChain.push(gadgetMap.get(step.trim()));
-            logS3(`  [GADGET] ${step.trim()} -> ${gadgetMap.get(step.trim()).toString(true)}`, "info");
-        } else {
-             try {
-                const value = step.trim().toLowerCase().startsWith("0x") ? new AdvancedInt64(step.trim()) : new AdvancedInt64(parseInt(step.trim()));
+    let validChain = true; // Não usado no original, mas bom para ter
+
+    logS3("Construindo cadeia ROP:", "info", FNAME);
+    for (const step of chainSteps) {
+        const trimmedStep = step.trim();
+        if (!trimmedStep) continue;
+
+        if (gadgetMap.has(trimmedStep)) { 
+            const gadgetAddr = gadgetMap.get(trimmedStep);
+            ropChain.push(gadgetAddr);
+            logS3(`  [GADGET] ${trimmedStep} -> ${gadgetAddr.toString(true)}`, "info", FNAME);
+        } else { 
+            try {
+                const value = trimmedStep.toLowerCase().startsWith("0x") ? new AdvancedInt64(trimmedStep) : new AdvancedInt64(parseInt(trimmedStep));
                 ropChain.push(value);
-                logS3(`  [VALOR]  ${step.trim()} -> ${value.toString(true)}`, "info");
+                logS3(`  [VALOR]  ${trimmedStep} -> ${value.toString(true)}`, "info", FNAME);
             } catch (e) {
-                logS3(`  [RAW_VAL] ${step.trim()}`, "warn");
-                ropChain.push(step.trim()); // Add as string if not a number or known gadget
+                logS3(`AVISO: '${trimmedStep}' não é um gadget conhecido nem um valor numérico válido. Tratando como string.`, "warn", FNAME);
+                ropChain.push(trimmedStep); 
             }
         }
-    });
-     if (ropChain.length > 0) {
+    }
+
+    if (ropChain.length > 0) {
         logS3("Cadeia ROP construída (endereços/valores):", "good", FNAME);
         ropChain.forEach((item, index) => {
             logS3(`    ${index}: ${(item instanceof AdvancedInt64) ? item.toString(true) : item}`, "info");
         });
+        logS3("Nota: Esta é uma representação. A execução real requereria controle do ponteiro de stack (RSP) e um 'ret' inicial.", "info", FNAME);
     } else {
         logS3("Nenhuma cadeia ROP construída.", "warn", FNAME);
     }
 }
-
-// Similarly, a viewMemoryFromUI() function could be created in a memory_viewer.mjs
