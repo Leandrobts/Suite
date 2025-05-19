@@ -38,7 +38,7 @@ export class AdvancedInt64 {
             if (hexstr.length > 16) { hexstr = hexstr.substring(hexstr.length - 16); }
             else { hexstr = hexstr.padStart(16, '0');}
 
-            for (let i = 0; i < 8; i++) {
+            for (let i = 0; i < 8; i++) { 
                 bytes[i] = parseInt(hexstr.slice(14 - i*2, 16 - i*2), 16);
             }
         } else if (typeof low === 'object') {
@@ -136,11 +136,9 @@ export const readWriteUtils = {
 export const generalUtils = {
     align: (addrOrInt, alignment) => {
         let a = (addrOrInt instanceof AdvancedInt64) ? addrOrInt : new AdvancedInt64(addrOrInt);
-        // Simplified alignment logic for positive numbers, assuming alignment is power of 2
         let low = a.low();
-        let high = a.high();
-        low = (low + alignment - 1) & (~(alignment - 1)); // Align low part up
-        // For full 64-bit alignment, a more robust method would be needed if high part needs alignment.
+        let high = a.high(); 
+        low = (low + alignment -1) & (~(alignment-1)); 
         return new AdvancedInt64(low, high);
     },
     str2array: (str, length, offset = 0) => {
@@ -152,12 +150,20 @@ export const generalUtils = {
     }
 };
 
-export const PAUSE_FUNC = (ms) => new Promise(r => setTimeout(r, ms));
+// For example, from your original HTML:
+export const jscOffsets = {
+    js_butterfly: 0x8,
+    view_m_vector: 0x10,
+    view_m_length: 0x18,
+    view_m_mode: 0x1c,
+    size_view: 0x20,
+};
 
-export const toHex = (val, bits = 32) => {
-    if (typeof val !== 'number' || !isFinite(val)) return 'NaN/Invalid';
-    let num = Number(val);
-    if (bits <= 32) { num = num >>> 0; }
-    const pad = Math.ceil(bits / 4);
-    return '0x' + num.toString(16).toUpperCase().padStart(pad, '0');
+export const PAUSE = (ms = 50) => new Promise(r => setTimeout(r, ms));
+export const toHex = (val, bits = 32) => { 
+    if (typeof val !== 'number' || !isFinite(val)) return 'NaN/Invalid'; 
+    let num = Number(val); 
+    if (bits <= 32) { num = num >>> 0; } 
+    const pad = Math.ceil(bits / 4); 
+    return '0x' + num.toString(16).toUpperCase().padStart(pad, '0'); 
 };
