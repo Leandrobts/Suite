@@ -59,8 +59,8 @@ export class AdvancedInt64 {
     high() { return this.buffer[1]; }
 
     toString(is_pretty) {
-        let lowStr = this.low().toString(16).padStart(8, '0');
-        let highStr = this.high().toString(16).padStart(8, '0');
+        let lowStr = (this.low() >>> 0).toString(16).padStart(8, '0');
+        let highStr = (this.high() >>> 0).toString(16).padStart(8, '0');
         if (is_pretty) {
             highStr = highStr.substring(0, 4) + '_' + highStr.substring(4);
             lowStr = lowStr.substring(0, 4) + '_' + lowStr.substring(4);
@@ -135,10 +135,12 @@ export const readWriteUtils = {
 
 export const generalUtils = {
     align: (addrOrInt, alignment) => {
+        // Simplified align for positive numbers assuming alignment is power of 2
         let a = (addrOrInt instanceof AdvancedInt64) ? addrOrInt : new AdvancedInt64(addrOrInt);
         let low = a.low();
         let high = a.high(); 
         low = (low + alignment -1) & (~(alignment-1)); 
+        // For full 64-bit alignment, high part would need more complex handling if low overflows significantly
         return new AdvancedInt64(low, high);
     },
     str2array: (str, length, offset = 0) => {
@@ -150,8 +152,7 @@ export const generalUtils = {
     }
 };
 
-// For example, from your original HTML:
-export const jscOffsets = {
+export const jscOffsets = { // From original HTML
     js_butterfly: 0x8,
     view_m_vector: 0x10,
     view_m_length: 0x18,
@@ -160,10 +161,11 @@ export const jscOffsets = {
 };
 
 export const PAUSE = (ms = 50) => new Promise(r => setTimeout(r, ms));
+
 export const toHex = (val, bits = 32) => { 
     if (typeof val !== 'number' || !isFinite(val)) return 'NaN/Invalid'; 
     let num = Number(val); 
-    if (bits <= 32) { num = num >>> 0; } 
+    if (bits <= 32) { num = num >>> 0; } // Ensure unsigned for 32-bit hex
     const pad = Math.ceil(bits / 4); 
     return '0x' + num.toString(16).toUpperCase().padStart(pad, '0'); 
 };
