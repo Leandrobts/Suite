@@ -3,7 +3,7 @@ import { logS1 } from '../../logger.mjs';
 import { PAUSE_FUNC } from '../../utils.mjs';
 import { getEl } from '../../domUtils.mjs';
 
-const SHORT_PAUSE_S1 = 50; // Pode ser centralizado em um config de constantes se preferir
+const SHORT_PAUSE_S1 = 50;
 
 export async function testCSPBypassS1() {
     const FNAME = 'testCSPBypassS1';
@@ -43,7 +43,7 @@ export async function testCSPBypassS1() {
         link.href = "javascript:try{parent.postMessage({ type: 'logS1', args: ['[Payload JS Href:] Executado!', 'vuln', 'XSS Payload JS Href']},'*'); alert('XSS S1 via JS Href!');}catch(e){parent.postMessage({ type: 'logS1', args: ['[Payload JS Href:] Bloqueado: '+e.message,'good','XSS Payload JS Href']},'*');}";
         link.textContent = "[Test Link JS Href - Clique Manual]";
         link.style.display = 'block'; link.style.color = 'cyan';
-        if (xssTargetDiv) xssTargetDiv.appendChild(link); // Adicionar ao div alvo
+        if (xssTargetDiv) xssTargetDiv.appendChild(link);
         logS1("Adicionado link javascript: href para teste manual.", 'info', FNAME);
     } catch(e) { logS1(`Erro ao criar link js: href: ${e.message}`, 'error', FNAME); }
     
