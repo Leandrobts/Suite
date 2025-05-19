@@ -1,3 +1,4 @@
+
 // js/config.mjs
 
 // Firmware: PS4 12.02 (inferido)
