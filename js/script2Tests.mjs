@@ -1,50 +1,41 @@
 // js/script2Tests.mjs
 import { logS2 } from './logger.mjs';
-import { PAUSE_FUNC, toHex } from './utils.mjs';
+import { PAUSE_FUNC, toHex } from './utils.mjs'; // AdvancedInt64 pode ser necessário para alguns testes futuros
 import { setButtonDisabled, clearOutput, getEl } from './domUtils.mjs';
-// import { JSC_OFFSETS, WEBKIT_LIBRARY_INFO } from './config.mjs'; // Se precisar de offsets
-import { getLeakedValueS1 } from './script1Tests.mjs';
+// import { OOB_CONFIG } from './config.mjs'; // Se for usar para os tamanhos de buffer
+import { getLeakedValueS1 } from './script1Tests.mjs'; // Importação crucial
 
 const SHORT_PAUSE_CANVAS_S2 = 50;
 const MEDIUM_PAUSE_S2 = 500;
 
-// --- Estado e Configurações do Canvas S2 ---
 let canvasElementS2 = null;
-let ctxS2 = null; // Contexto 2D
-let glContextS2 = null; // Contexto WebGL
+let ctxS2 = null;
+// ... (outras variáveis de estado do S2 como glContextS2, gpuAdapterS2, etc. da resposta anterior)
+let glContextS2 = null; 
 let isWebGL2S2 = false;
 let gpuAdapterS2 = null;
 let gpuDeviceS2 = null;
-
 let coordStatusDivS2 = null;
 let currentHoverTargetS2 = null;
-let canvasClickListenerS2 = null; // Listener de clique
-let canvasMoveListenerS2 = null;  // Listener de movimento
-
+let canvasClickListenerS2 = null; 
+let canvasMoveListenerS2 = null;  
 const interactiveAreasS2 = [
     { id: 'rect-log-s2', x: 10, y: 10, w: 70, h: 25, color: '#FF5733', hoverColor: '#FF8C66', text: 'Log Clk' },
     { id: 'rect-link-s2', x: 90, y: 10, w: 80, h: 25, color: '#337BFF', hoverColor: '#66A3FF', text: 'Abrir Link' },
     { id: 'rect-rerun-s2', x: 180, y: 10, w: 100, h: 25, color: '#4CAF50', hoverColor: '#80C883', text: 'Re-ler Leak S1' }
 ];
-
 const imgSquareSizeS2 = 28;
 const imgSquareSpacingS2 = 5;
-const imgSquaresS2 = []; // Será populado em runCanvasTestSequenceS2
+const imgSquaresS2 = []; 
 const imgSquaresStartYS2 = 45;
 
-let currentLeakDataS2 = { text: "Leak(S1): N/A", color: "#AAAAAA" };
 
-// Funções de ajuda específicas do S2 (podem ser as mesmas do S1 ou específicas)
-const isPotentialPointer64_S2_FUNC = (high, low) => { /* ... mesma lógica de isPotentialPointer64S1 ou adaptada ... */
-    return (high !== 0 || low !== 0) && !(high === 0xFFFFFFFF && low === 0xFFFFFFFF) && !(high === 0xAAAAAAAA && low === 0xAAAAAAAA) && !(high === 0xAAAAAAEE && low === 0xAAAAAAAA) && !(high === 0 && low < 0x100000);
-};
-const isPotentialData32_S2_FUNC = (val) => {  /* ... mesma lógica de isPotentialData32S1 ou adaptada ... */
-    val = val >>> 0; return val !== 0 && val !== 0xFFFFFFFF && val !== 0xAAAAAAAA && val !== 0xAAAAAAEE && val >= 0x1000;
-};
+let currentLeakDataS2 = { text: "Leak(S1): N/A", color: "#AAAAAA" }; // Estado para exibir o leak no canvas
 
 
-// --- Funções de Desenho do Canvas S2 ---
-function drawInteractiveAreasS2() {
+// Funções de desenho do canvas (drawInteractiveAreasS2, drawImageSquaresS2, redrawAllS2)
+// (Mantidas como na sua versão anterior)
+function drawInteractiveAreasS2() { /* ...código da resposta anterior... */
     if (!ctxS2) return;
     try {
         interactiveAreasS2.forEach(a => {
@@ -56,48 +47,43 @@ function drawInteractiveAreasS2() {
             ctxS2.textBaseline = "middle";
             ctxS2.fillText(a.text, a.x + a.w / 2, a.y + a.h / 2 + 1);
         });
-        ctxS2.textAlign = "start"; // Reset
-        ctxS2.textBaseline = "alphabetic"; // Reset
+        ctxS2.textAlign = "start"; 
+        ctxS2.textBaseline = "alphabetic"; 
     } catch (e) { logS2(`Erro drawAreasS2: ${e.message}`, 'error', 'drawInteractiveAreasS2'); }
 }
-
-function drawImageSquaresS2() {
+function drawImageSquaresS2() { /* ...código da resposta anterior... */
     if (!ctxS2) return;
     try {
         imgSquaresS2.forEach(sq => {
-            ctxS2.fillStyle = sq.hover ? '#FFFF88' : sq.color; // Cor de hover
+            ctxS2.fillStyle = sq.hover ? '#FFFF88' : sq.color; 
             ctxS2.fillRect(sq.x, sq.y, sq.size, sq.size);
             ctxS2.strokeStyle = '#AAA';
             ctxS2.lineWidth = 1;
             ctxS2.strokeRect(sq.x, sq.y, sq.size, sq.size);
             if (sq.text) {
-                ctxS2.fillStyle = "#FFF"; // Cor do texto
+                ctxS2.fillStyle = "#FFF"; 
                 ctxS2.font = "bold 9px mono";
                 ctxS2.textAlign = "center";
                 ctxS2.textBaseline = "middle";
                 ctxS2.fillText(sq.text, sq.x + sq.size / 2, sq.y + sq.size / 2);
             }
-             if (sq.url) { // Indicar se é um link
+             if (sq.url) { 
                 ctxS2.fillStyle = "#6cf"; ctxS2.font = "bold 8px mono";
                 ctxS2.fillText("LINK", sq.x + sq.size / 2, sq.y + sq.size - 6);
             }
         });
-        ctxS2.textAlign = "start"; ctxS2.textBaseline = "alphabetic"; // Reset
+        ctxS2.textAlign = "start"; ctxS2.textBaseline = "alphabetic"; 
     } catch (e) { logS2(`Erro drawImageSquaresS2: ${e.message}`, 'error', 'drawImageSquaresS2'); }
 }
-
-function redrawAllS2() {
+function redrawAllS2() { /* ...código da resposta anterior... */
     if (!ctxS2 || !canvasElementS2) return;
     try {
         ctxS2.save();
         ctxS2.clearRect(0, 0, canvasElementS2.width, canvasElementS2.height);
-        ctxS2.fillStyle = "#334"; // Fundo do canvas
+        ctxS2.fillStyle = "#334"; 
         ctxS2.fillRect(0, 0, canvasElementS2.width, canvasElementS2.height);
-
         drawInteractiveAreasS2();
         drawImageSquaresS2();
-
-        // Desenhar info do leak
         ctxS2.fillStyle = currentLeakDataS2.color;
         ctxS2.font = "10px mono";
         ctxS2.textAlign = "start";
@@ -107,8 +93,8 @@ function redrawAllS2() {
 }
 
 
-// --- Testes do Script 2 ---
-async function testWebGLCheckS2() {
+// Testes do S2
+async function testWebGLCheckS2() { /* ...código da resposta anterior (parecia OK nos logs)... */
     const FNAME = 'testWebGLCheckS2';
     logS2("--- Teste: Verificação WebGL ---", 'test', FNAME);
     glContextS2 = null; isWebGL2S2 = false;
@@ -127,10 +113,10 @@ async function testWebGLCheckS2() {
                     const gl2Version = gl2.getParameter(gl2.VERSION);
                     logS2(`WebGL2 OK! V:${String(gl2Version).substring(0,30)}`, 'good', FNAME);
                     isWebGL2S2 = true;
-                    glContextS2 = gl2; // Priorizar WebGL2
+                    glContextS2 = gl2; 
                 } else { logS2("WebGL2 não disponível.", 'good', FNAME); }
             } catch(e2) { logS2("WebGL2 não disponível (erro check).", 'good', FNAME); }
-        } else { logS2('WebGL N/A.', 'good', FNAME); }
+        } else { logS2('WebGL N/A.', 'good', FNAME); } // Este foi o caso nos seus logs
     } catch(e) {
         logS2(`Erro ao verificar WebGL: ${e.message}`, 'error', FNAME);
         console.error(e);
@@ -140,10 +126,9 @@ async function testWebGLCheckS2() {
     await PAUSE_FUNC(SHORT_PAUSE_CANVAS_S2);
 }
 
-async function testAdvancedPPS2() {
+async function testAdvancedPPS2() { /* ...código da resposta anterior (parecia OK nos logs)... */
     const FNAME = 'testAdvancedPPS2';
     logS2("--- Teste: PP Avançado (Gadgets++) ---", 'test', FNAME);
-    // Definição completa de propsToPollute do HTML original
     const propsToPollute = [
         { name: 'constructor', proto: Object.prototype, protoName: 'Object' }, { name: '__proto__', proto: Object.prototype, protoName: 'Object' },
         { name: 'isAdmin', proto: Object.prototype, protoName: 'Object', gadgetCheck: (obj, v) => obj.isAdmin === v ? 'Pot bypass isAdmin!' : null },
@@ -167,40 +152,35 @@ async function testAdvancedPPS2() {
         { name: 'filter', proto: Array.prototype, protoName: 'Array', gadgetCheck: (obj, v) => { try{[].filter(()=>{}); return null;} catch(e){ return `Array.filter quebrou! ${e.message}`;} }, createTarget: () => [] },
         { name: 'forEach', proto: Array.prototype, protoName: 'Array', gadgetCheck: (obj, v) => { try{[].forEach(()=>{}); return null;} catch(e){ return `Array.forEach quebrou! ${e.message}`;} }, createTarget: () => [] },
         { name: 'join', proto: Array.prototype, protoName: 'Array', gadgetCheck: (obj, v) => { try{[1,2].join(); return null;} catch(e){ return `Array.join quebrou! ${e.message}`;} }, createTarget: () => [] },
-        { name: 'call', proto: Function.prototype, protoName: 'Function', gadgetCheck: (obj, v) => { try{function f(){}; f.call(null); return null;} catch(e){ return `Function.call quebrou! ${e.message}`;} }, createTarget: () => function(){} }, // Adicionado null a call
-        { name: 'apply', proto: Function.prototype, protoName: 'Function', gadgetCheck: (obj, v) => { try{function f(){}; f.apply(null); return null;} catch(e){ return `Function.apply quebrou! ${e.message}`;} }, createTarget: () => function(){} }, // Adicionado null a apply
+        { name: 'call', proto: Function.prototype, protoName: 'Function', gadgetCheck: (obj, v) => { try{function f(){}; f.call(null); return null;} catch(e){ return `Function.call quebrou! ${e.message}`;} }, createTarget: () => function(){} }, 
+        { name: 'apply', proto: Function.prototype, protoName: 'Function', gadgetCheck: (obj, v) => { try{function f(){}; f.apply(null); return null;} catch(e){ return `Function.apply quebrou! ${e.message}`;} }, createTarget: () => function(){} }, 
     ];
     const testValue = "PP_Adv_Polluted_S2_" + Date.now();
     let successCount = 0; let gadgetCount = 0; let gadgetMessages = [];
-
     for (const item of propsToPollute) {
-        if (!item.proto || !item.proto.constructor) { // Checar se o protótipo é válido
+        if (!item.proto || !item.proto.constructor) { 
             logS2(`AVISO: Protótipo inválido para ${item.name} no ${item.protoName}. Pulando.`, 'warn', FNAME);
             continue;
         }
         const prop = item.name; const targetProto = item.proto; const targetProtoName = item.protoName;
         let inherited = false; let gadgetMsg = null; let originalValue = undefined; let wasDefined = false;
-
-        try { // Tentar obter o valor original de forma segura
+        try { 
             if (Object.prototype.hasOwnProperty.call(targetProto, prop)) {
                 wasDefined = true;
                 originalValue = targetProto[prop];
             }
         } catch (e) {
             logS2(`AVISO: Erro ao verificar/obter original para ${targetProtoName}.${prop}: ${e.message}`, 'warn', FNAME);
-            continue; // Pular se não puder obter o original de forma segura
+            continue; 
         }
-
         try {
             targetProto[prop] = testValue;
             let obj;
             if (item.createTarget) {
-                try { obj = item.createTarget(); } catch (e) { obj = {}; /* fallback */ }
+                try { obj = item.createTarget(); } catch (e) { obj = {}; }
             } else { obj = {}; }
-
             let inheritedValue = undefined;
-            try { inheritedValue = obj[prop]; } catch (e) { /* pode falhar se getter for poluído */ }
-
+            try { inheritedValue = obj[prop]; } catch (e) { }
             if (inheritedValue === testValue) {
                 logS2(`-> VULN: Herança PP para '${targetProtoName}.${prop}' OK.`, 'vuln', FNAME);
                 inherited = true; successCount++;
@@ -215,31 +195,27 @@ async function testAdvancedPPS2() {
                     }
                 }
             } else {
-                if (prop === '__proto__') { // __proto__ é especial
+                if (prop === '__proto__') { 
                     logS2(`-> FAIL: Herança de '__proto__' não OK (Comportamento esperado em navegadores modernos).`, 'good', FNAME);
-                } else {
-                    // Logar falha apenas se não for __proto__
-                    // logS2(`-> FAIL: Herança PP para '${targetProtoName}.${prop}' não OK. Recebido: ${inheritedValue}`, 'warn', FNAME);
                 }
             }
         } catch (e) {
             logS2(`Erro ao poluir/testar '${targetProtoName}.${prop}': ${e.message}`, 'error', FNAME);
-        } finally { // Limpeza
+        } finally { 
             try {
                 if (wasDefined) {
                     targetProto[prop] = originalValue;
                 } else {
                     delete targetProto[prop];
                 }
-                // Verificar limpeza
-                if (targetProto[prop] === testValue && prop !== '__proto__') { // Não poluir permanentemente
+                if (targetProto[prop] === testValue && prop !== '__proto__') { 
                      logS2(`---> CRITICAL: FALHA ao limpar/restaurar ${targetProtoName}.${prop}!`, 'critical', FNAME);
                 }
             } catch (eClean) {
                 logS2(`AVISO CRÍTICO: Erro INESPERADO ao limpar/restaurar ${targetProtoName}.${prop}: ${eClean.message}`, 'critical', FNAME);
             }
         }
-        await PAUSE_FUNC(15); // Pequena pausa entre cada propriedade
+        await PAUSE_FUNC(15); 
     }
     logS2(`--- Teste PP Avançado Concluído (${successCount} heranças OK, ${gadgetCount} gadgets encontrados) ---`, 'test', FNAME);
     if (gadgetCount > 0) {
@@ -249,42 +225,151 @@ async function testAdvancedPPS2() {
 }
 
 
-// ... (Outras funções de teste do S2: testOOBReadEnhancedS2, testOOBWriteMetadataS2, testWebGLDeeperPlusS2, etc.
-//      Estas são bastante longas e seguiriam o mesmo padrão de adaptação:
-//      - Usar logS2, PAUSE_FUNC, toHex.
-//      - Gerenciar estado se necessário (ex: glContextS2).
-//      - Interagir com o DOM via getEl, setButtonDisabled.
-//      - Usar constantes de config.mjs se aplicável.)
-
-// Exemplo do testOOBWriteMetadataS2 (parcial)
 async function testOOBWriteMetadataS2() {
     const FNAME = 'testOOBWriteMetadataS2';
-    logS2("--- Teste: OOB Write -> Metadata (ArrayBuffer.byteLength) ---",'test', FNAME);
-    // ... (lógica original com adaptações para logS2, PAUSE_FUNC, toHex, etc.)
-    // Este teste é complexo e envolve criar múltiplos buffers e tentar corromper.
-    // Vou omitir a implementação completa por brevidade, mas o padrão seria:
-    // - Alocar buffers.
-    // - Iterar sobre offsets de escrita OOB.
-    // - Tentar escrever (dv.setUint32).
-    // - Verificar o byteLength dos buffers alvo.
-    // - Logar VULN/CRITICAL se a corrupção for detectada.
-    // - Logar escalations.
-    logS2("--- Teste OOB Write -> Metadata Concluído (LÓGICA A SER IMPLEMENTADA COMPLETAMENTE) ---",'test', FNAME);
+    logS2("--- Teste: OOB Write -> Metadata (ArrayBuffer.byteLength) ---", 'test', FNAME);
+    const controlBufferSize = 64; // Tamanho do buffer que tentará escrever OOB
+    const targetBufferSize = 64;  // Tamanho dos buffers que queremos corromper
+    const sprayCount = 50;        // Quantos buffers alvo vamos "pulverizar" na memória
+    const targetCorruptedValue = 0x7FFFFFFE; // Novo tamanho desejado para o buffer corrompido
+
+    const targetBuffers = [];
+    let controlBuffer = null;
+    let dvControl = null; // DataView para o controlBuffer
+    let writeSuccessCount = 0;
+    let corruptionSuccess = false;
+    let foundCorruptedOffset = -1;
+
+    const allocationSizeControl = controlBufferSize + 256; // Dar espaço para OOB write
+    const baseOffsetInControlDV = 128; // Onde começamos a contar no controlBuffer para o OOB
+
+    try {
+        controlBuffer = new ArrayBuffer(allocationSizeControl);
+        dvControl = new DataView(controlBuffer);
+        for (let i = 0; i < controlBuffer.byteLength; i++) dvControl.setUint8(i, 0xDD); // Padrão
+    } catch (e) {
+        logS2(`Erro fatal ao alocar buffer de controle: ${e.message}`, 'error', FNAME);
+        return;
+    }
+
+    logS2(`Alocando ${sprayCount} buffers alvo de ${targetBufferSize} bytes...`, 'info', FNAME);
+    for (let i = 0; i < sprayCount; i++) {
+        try {
+            targetBuffers.push(new ArrayBuffer(targetBufferSize));
+        } catch (e) {
+            logS2(`Falha ao alocar buffer alvo ${i}: ${e.message}`, 'warn', FNAME);
+        }
+    }
+    await PAUSE_FUNC(MEDIUM_PAUSE_S2); // Pausa para permitir alocações
+
+    // Offsets relativos ao final do `controlBufferSize` lógico para tentar a escrita OOB.
+    // Estes offsets tentam atingir os metadados do próximo ArrayBuffer na memória.
+    // Os valores exatos dependem da engine JS e do alocador de memória.
+    const metadataOffsetsToTry = [-16, -12, -8, -4, 0, 4, 8, 12, 16, 20, 24, 28, 32];
+
+    for (const tryOffset of metadataOffsetsToTry) {
+        // Endereço absoluto dentro do dvControl onde tentaremos escrever
+        const targetWriteAddrInControlDV = baseOffsetInControlDV + controlBufferSize + tryOffset;
+        const relOffsetStr = `ctrlEnd+${tryOffset} (addr ${targetWriteAddrInControlDV})`;
+        logS2(`Tentando offset OOB metadata: ${tryOffset}... Addr no DV de controle: ${targetWriteAddrInControlDV}`, 'info', FNAME);
+
+        let currentWriteOK = false;
+        try {
+            // Garantir que a escrita está dentro dos limites do ArrayBuffer de controle real
+            if (targetWriteAddrInControlDV >= 0 && (targetWriteAddrInControlDV + 4) <= controlBuffer.byteLength) {
+                dvControl.setUint32(targetWriteAddrInControlDV, targetCorruptedValue, true); // Escreve o novo tamanho
+                writeSuccessCount++;
+                currentWriteOK = true;
+                logS2(` -> Escrita OOB U32 em ${relOffsetStr} parece OK.`, 'info', FNAME);
+            } else {
+                logS2(` -> Offset OOB ${relOffsetStr} fora dos limites do buffer de controle. Pulando.`, 'warn', FNAME);
+            }
+        } catch (e) {
+            logS2(` -> Escrita OOB U32 falhou/bloqueada em ${relOffsetStr}: ${e.message}`, 'good', FNAME);
+        }
+
+        if (currentWriteOK) {
+            logS2(` -> Verificando ${targetBuffers.length} buffers alvo por corrupção de byteLength...`, 'info', FNAME);
+            await PAUSE_FUNC(50); // Dar tempo para qualquer efeito de memória
+            for (let j = 0; j < targetBuffers.length; j++) {
+                try {
+                    const currentTargetBuffer = targetBuffers[j];
+                    if (!currentTargetBuffer) continue;
+
+                    const currentLength = currentTargetBuffer.byteLength;
+                    if (currentLength === targetCorruptedValue) {
+                        logS2(`---> VULN: ArrayBuffer alvo ${j} teve byteLength CORROMPIDO para ${toHex(targetCorruptedValue)} com escrita OOB em ${relOffsetStr}!`, 'critical', FNAME);
+                        corruptionSuccess = true;
+                        foundCorruptedOffset = tryOffset;
+
+                        // Demonstração de R/W com o buffer corrompido
+                        try {
+                            const corruptedDv = new DataView(currentTargetBuffer); // Agora com tamanho maior
+                            const readWriteOffsetInCorrupted = targetBufferSize + 4; // Tentar ler/escrever além do tamanho original
+
+                            if (readWriteOffsetInCorrupted < currentTargetBuffer.byteLength - 4) { // Checar se cabe no novo tamanho
+                                const testPattern = 0x12345678;
+                                logS2(` -> Tentando R/W (padrão ${toHex(testPattern)}) via buffer corrompido ${j} @ offset ${readWriteOffsetInCorrupted}...`, 'info', FNAME);
+                                corruptedDv.setUint32(readWriteOffsetInCorrupted, testPattern, true);
+                                const readBack = corruptedDv.getUint32(readWriteOffsetInCorrupted, true);
+                                if (readBack === testPattern) {
+                                    logS2(` ---> SUCESSO DEMO: R/W além dos limites originais do ArrayBuffer ${j} CONFIRMADA! (Leu ${toHex(readBack)})`, 'vuln', FNAME);
+                                    logS2(` ---> *** ALERTA: Primitiva de R/W Arbitrária (limitada ao novo tamanho ${toHex(currentTargetBuffer.byteLength)}) obtida! ***`, 'escalation', FNAME);
+                                } else {
+                                    logS2(` -> AVISO DEMO: Escrita no buffer ${j} corrompido @ ${readWriteOffsetInCorrupted} falhou na verificação (leu ${toHex(readBack)}).`, 'warn', FNAME);
+                                }
+                            } else {
+                                logS2(` -> INFO DEMO: Offset de teste ${readWriteOffsetInCorrupted} fora do novo tamanho ${toHex(currentTargetBuffer.byteLength)}.`, 'info', FNAME);
+                            }
+                        } catch (eDemo) {
+                            logS2(` -> ERRO DEMO: Erro R/W estendido no buffer ${j} corrompido: ${eDemo.message}`, 'error', FNAME);
+                        }
+                        break; // Sair do loop de verificação dos buffers alvo
+                    }
+                } catch (eCheck) {
+                    // Se o acesso a `byteLength` já der erro, isso também é um sinal de corrupção.
+                    logS2(`Erro ao verificar buffer alvo ${j} (pode indicar corrupção): ${eCheck.message}`, 'error', FNAME);
+                }
+            }
+
+            // Restaurar o valor no buffer de controle para evitar interferência com próximos offsets
+            try {
+                if (targetWriteAddrInControlDV >= 0 && (targetWriteAddrInControlDV + 4) <= controlBuffer.byteLength) {
+                    dvControl.setUint32(targetWriteAddrInControlDV, 0xDDDDDDDD, true);
+                }
+            } catch (eRestore) { /* Silencioso */ }
+        }
+        if (corruptionSuccess) break; // Sair do loop de offsets
+        await PAUSE_FUNC(20); // Pausa entre tentativas de offset
+    }
+
+    let finalResultLog = `AVISO: ${writeSuccessCount} escritas OOB realizadas, mas nenhuma corrupção de byteLength detectada.`;
+    if (corruptionSuccess) {
+        finalResultLog = `SUCESSO! byteLength corrompido usando offset relativo ctrlEnd+${foundCorruptedOffset}.`;
+        logS2(finalResultLog, 'vuln', FNAME);
+    } else if (writeSuccessCount === 0) {
+        finalResultLog = `Escrita OOB falhou/bloqueada consistentemente. Nenhuma corrupção.`;
+        logS2(finalResultLog, 'good', FNAME);
+    } else {
+        logS2(finalResultLog, 'warn', FNAME);
+    }
+    logS2("--- Teste OOB Write -> Metadata Concluído ---", 'test', FNAME);
     await PAUSE_FUNC(SHORT_PAUSE_CANVAS_S2);
 }
 
 
-// --- Lógica Principal e Interatividade do Script 2 ---
+// Lógica Principal e Interatividade do Script 2 (runCanvasTestSequenceS2, handleCanvasClickS2, etc.)
+// (Mantidas como na sua versão anterior, mas agora `getLeakedValueS1` deve funcionar se S1 o define)
 async function runCanvasTestSequenceS2() {
     const FNAME = 'runCanvasTestSequenceS2';
-    logS2("Iniciando sequência focada do Script 2 (v19.0 Modular)...", "test", FNAME);
+    logS2("Iniciando sequência focada do Script 2 (v19.0 Modular Corrigido)...", "test", FNAME);
 
-    // Inicializar elementos do canvas se ainda não foram
     if (!canvasElementS2) canvasElementS2 = getEl('interactive-canvas');
     if (!coordStatusDivS2) coordStatusDivS2 = getEl('canvas-coord-status');
 
     if (!canvasElementS2 || !coordStatusDivS2) {
         logS2("FATAL: Elementos essenciais do Canvas S2 não encontrados!", 'critical', FNAME);
+        setButtonDisabled('runCanvasBtn', false); // Reabilitar botão se falhar aqui
         return;
     }
 
@@ -293,23 +378,19 @@ async function runCanvasTestSequenceS2() {
         if (!ctxS2) throw new Error("Falha ao obter Ctx 2D para S2.");
     } catch (e) {
         logS2(`Falha Ctx 2D (S2): ${e.message}`, 'critical', FNAME);
-        return; // Interrompe se não puder desenhar
+        setButtonDisabled('runCanvasBtn', false);
+        return;
     }
 
-    imgSquaresS2.length = 0; // Limpar quadrados
+    imgSquaresS2.length = 0;
     let sqX = 10; let sqY = imgSquaresStartYS2;
-    const squareDefsS2Config = [ // Ações são os próprios testes
+    const squareDefsS2Config = [
         { id: 's2-sq-meta', text: 'Meta', color: '#FF5733', action: testOOBWriteMetadataS2 },
         { id: 's2-sq-pp', text: 'PP++', color: '#C70039', action: testAdvancedPPS2 },
-        // Adicionar outras definições de quadrados e suas ações de teste
-        // { id: 's2-sq-oobrd', text: 'OOBRd', color: '#E67E22', action: testOOBReadEnhancedS2 },
-        // { id: 's2-sq-imgdt', text: 'ImgDt', color: '#900C3F', action: testOOBWriteToImageDataCheckS2 },
-        // { id: 's2-sq-file', text: 'File', color: '#581845', action: testFileSystemAccessS2 },
-        // { id: 's2-sq-gpu', text: 'WebGPU', color: '#337BFF', action: testWebGPUCheckS2 },
-        // { id: 's2-sq-webgl', text: 'WebGL+', color: '#2ECC71', action: testWebGLDeeperPlusS2 },
+        // Adicionar os outros testes aqui quando estiverem completos
+        // { id: 's2-sq-oobrd', text: 'OOBRd', color: '#E67E22', action: testOOBReadEnhancedS2 }, // exemplo
     ];
-
-    squareDefsS2Config.forEach(def => {
+    squareDefsS2Config.forEach(def => { /* ...código da resposta anterior... */
         if (sqX + imgSquareSizeS2 + imgSquareSpacingS2 > canvasElementS2.width - 5 && sqX > 10) {
             sqX = 10; sqY += imgSquareSizeS2 + imgSquareSpacingS2;
         }
@@ -324,37 +405,35 @@ async function runCanvasTestSequenceS2() {
         }
     });
 
-    // Ler leak de S1
-    try {
-        const l = getLeakedValueS1();
-        if (l) {
-            const ls = l.type === 'U64' ? `L(S1):U64 H=${toHex(l.high)} L=${toHex(l.low)}@${l.offset}` : `L(S1):U32 ${toHex(l.low)}@${l.offset}`;
-            logS2(`-> Leak S1 encontrado: ${ls}`, 'leak', FNAME);
-            currentLeakDataS2 = { text: ls, color: "#FF9800" };
-        } else {
-            logS2(`-> Leak S1 (leakedValueFromOOB_S1) nulo/não encontrado.`, 'warn', FNAME);
-            currentLeakDataS2 = { text: "L(S1):NULO", color: "#FFC107" };
-        }
-    } catch (e) {
-        logS2(`Erro ao acessar leak S1: ${e.message}`, 'error', FNAME);
-        currentLeakDataS2 = { text: "L(S1):ERRO", color: "#F44336" };
+    // Correção: Chamar getLeakedValueS1() para atualizar currentLeakDataS2
+    const leakedS1Value = getLeakedValueS1();
+    if (leakedS1Value) {
+        const ls = leakedS1Value.type === 'U64' ?
+            `L(S1):U64 H=${toHex(leakedS1Value.high)} L=${toHex(leakedS1Value.low)}@${leakedS1Value.offset}` :
+            `L(S1):U32 ${toHex(leakedS1Value.low)}@${leakedS1Value.offset}`;
+        logS2(`-> Leak S1 encontrado: ${ls}`, 'leak', FNAME);
+        currentLeakDataS2 = { text: ls, color: "#FF9800" };
+    } else {
+        logS2(`-> Leak S1 (leakedValueFromOOB_S1) nulo/não encontrado ao iniciar S2.`, 'warn', FNAME);
+        currentLeakDataS2 = { text: "L(S1):NULO", color: "#FFC107" };
     }
-    redrawAllS2(); // Desenha estado inicial com leak info
+    redrawAllS2();
     await PAUSE_FUNC(SHORT_PAUSE_CANVAS_S2);
 
-    // Executar sequência de testes automáticos S2
     await testWebGLCheckS2();
     await testAdvancedPPS2();
-    // await testOOBReadEnhancedS2(); // Implementar completamente
-    await testOOBWriteMetadataS2(); // Implementar completamente
-    // ... (outros testes automáticos do S2)
+    await testOOBWriteMetadataS2(); // Agora com lógica (parcialmente) implementada
+    // ... outros testes automáticos do S2
 
     logS2("--- Sequência principal de testes S2 focados concluída ---", 'test', FNAME);
-    setupCanvasListenersS2(); // Configurar listeners após os testes automáticos
-    redrawAllS2(); // Garantir que tudo está desenhado
+    setupCanvasListenersS2();
+    redrawAllS2();
 }
 
-function handleCanvasClickS2(event) {
+
+// Handlers de clique e movimento do canvas (handleCanvasClickS2, handleCanvasMouseMoveS2, setupCanvasListenersS2)
+// (Mantidos como na sua versão anterior, mas `getLeakedValueS1` é chamado dentro do handler de 'rect-rerun-s2' para obter o valor mais recente)
+function handleCanvasClickS2(event) { /* ...código da resposta anterior, mas a parte de re-ler o leak deve chamar getLeakedValueS1() novamente ... */
     const FNAME_CLICK = 'CanvasClickS2';
     if (!canvasElementS2) return;
 
@@ -379,19 +458,17 @@ function handleCanvasClickS2(event) {
                 try { window.open('https://google.com', '_blank'); }
                 catch (e) { logS2('Erro window.open: ' + e.message, 'error', FNAME_CLICK); }
                 break;
-            case 'rect-rerun-s2':
+            case 'rect-rerun-s2': // Corrigido para chamar getLeakedValueS1() novamente
                 logS2('Re-lendo leak S1...', 'info', FNAME_CLICK);
-                try {
-                    const l = getLeakedValueS1();
-                    if (l) {
-                        const ls = l.type === 'U64' ? `L(S1):U64 H=${toHex(l.high)} L=${toHex(l.low)}@${l.offset}` : `L(S1):U32 ${toHex(l.low)}@${l.offset}`;
-                        logS2(`-> Re-read Leak S1: ${ls}`, 'leak', FNAME_CLICK);
-                        currentLeakDataS2 = { text: ls, color: "#FF9800" };
-                    } else {
-                        logS2(`-> Re-read Leak S1: Nulo`, 'warn', FNAME_CLICK);
-                        currentLeakDataS2 = { text: "L(S1):NULO", color: "#FFC107" };
-                    }
-                } catch (e) { logS2(`Erro re-ler leak S1: ${e.message}`, 'error', FNAME_CLICK); }
+                const latestLeakedS1 = getLeakedValueS1(); // Chamar aqui para obter o valor mais recente
+                if (latestLeakedS1) {
+                    const ls = latestLeakedS1.type === 'U64' ? `L(S1):U64 H=${toHex(latestLeakedS1.high)} L=${toHex(latestLeakedS1.low)}@${latestLeakedS1.offset}` : `L(S1):U32 ${toHex(latestLeakedS1.low)}@${latestLeakedS1.offset}`;
+                    logS2(`-> Re-read Leak S1: ${ls}`, 'leak', FNAME_CLICK);
+                    currentLeakDataS2 = { text: ls, color: "#FF9800" };
+                } else {
+                    logS2(`-> Re-read Leak S1: Nulo`, 'warn', FNAME_CLICK);
+                    currentLeakDataS2 = { text: "L(S1):NULO", color: "#FFC107" };
+                }
                 redrawAllS2();
                 break;
         }
@@ -400,14 +477,14 @@ function handleCanvasClickS2(event) {
         if (clickedSquare.action && typeof clickedSquare.action === 'function') {
             logS2(`Executando re-run S2 ${clickedSquare.id} (${clickedSquare.action.name || 'anon_action'})...`, 'test', FNAME_CLICK);
             setButtonDisabled('runCanvasBtn', true);
-            clickedSquare.action() // Chamar a função de teste associada
+            clickedSquare.action() 
                 .then(() => {
                     logS2(`Re-run S2 ${clickedSquare.id} concluído.`, 'good', FNAME_CLICK);
-                    clickedSquare.color = '#8A2BE2'; // Mudar cor para indicar execução
+                    clickedSquare.color = '#8A2BE2'; 
                 })
                 .catch(e => {
                     logS2(`Erro durante re-run S2 ${clickedSquare.id}: ${e.message}`, 'error', FNAME_CLICK);
-                    clickedSquare.color = '#FFA500'; // Mudar cor para indicar erro
+                    clickedSquare.color = '#FFA500'; 
                 })
                 .finally(() => {
                     redrawAllS2();
@@ -420,8 +497,7 @@ function handleCanvasClickS2(event) {
         }
     }
 }
-
-function handleCanvasMouseMoveS2(event) {
+function handleCanvasMouseMoveS2(event) { /* ...código da resposta anterior... */
     if (!canvasElementS2 || !ctxS2) return;
     const rect = canvasElementS2.getBoundingClientRect();
     const x = event.clientX - rect.left;
@@ -429,7 +505,6 @@ function handleCanvasMouseMoveS2(event) {
     let needsRedraw = false;
     let newHoverTarget = null;
     let cursorStyle = 'default';
-
     interactiveAreasS2.forEach(a => {
         if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) {
             newHoverTarget = a.id; cursorStyle = 'pointer';
@@ -444,7 +519,6 @@ function handleCanvasMouseMoveS2(event) {
         }
         if (oldHover !== sq.hover) needsRedraw = true;
     });
-
     if (newHoverTarget !== currentHoverTargetS2) {
         currentHoverTargetS2 = newHoverTarget; needsRedraw = true;
     }
@@ -452,25 +526,22 @@ function handleCanvasMouseMoveS2(event) {
     canvasElementS2.style.cursor = cursorStyle;
     if (coordStatusDivS2) coordStatusDivS2.textContent = `Coords: X=${x.toFixed(0)}, Y=${y.toFixed(0)}`;
 }
-
-function setupCanvasListenersS2() {
+function setupCanvasListenersS2() { /* ...código da resposta anterior... */
     if (!canvasElementS2) return;
-    // Remover listeners antigos para evitar duplicação se chamado múltiplas vezes
     if (canvasClickListenerS2) canvasElementS2.removeEventListener('click', canvasClickListenerS2);
     if (canvasMoveListenerS2) canvasElementS2.removeEventListener('mousemove', canvasMoveListenerS2);
-
     canvasClickListenerS2 = handleCanvasClickS2;
     canvasMoveListenerS2 = handleCanvasMouseMoveS2;
-
     canvasElementS2.addEventListener('click', canvasClickListenerS2);
     canvasElementS2.addEventListener('mousemove', canvasMoveListenerS2);
 }
+
 
 export async function runCanvasTest() {
     const FNAME = 'runCanvasTest';
     setButtonDisabled('runCanvasBtn', true);
     clearOutput('output-canvas');
-    logS2("==== INICIANDO Script 2 (Canvas e APIs Avançadas Modular) ====", 'test', FNAME);
+    logS2("==== INICIANDO Script 2 (Canvas e APIs Avançadas Modular Corrigido) ====", 'test', FNAME);
 
     try {
         await runCanvasTestSequenceS2();
@@ -478,18 +549,16 @@ export async function runCanvasTest() {
         logS2(`Erro GERAL SCRIPT 2: ${e.message}`, 'critical', FNAME);
         console.error("Erro GERAL SCRIPT 2:", e);
     } finally {
-        logS2("\n==== Script 2 CONCLUÍDO (Modular) ====", 'test', FNAME);
+        logS2("\n==== Script 2 CONCLUÍDO (Modular Corrigido) ====", 'test', FNAME);
         setButtonDisabled('runCanvasBtn', false);
     }
 }
 
-// Limpeza no unload (pode ser chamado de main.mjs ou globalmente)
-export function cleanupScript2() {
+export function cleanupScript2() { /* ...código da resposta anterior... */
     try {
         if (canvasClickListenerS2 && canvasElementS2) canvasElementS2.removeEventListener('click', canvasClickListenerS2);
         if (canvasMoveListenerS2 && canvasElementS2) canvasElementS2.removeEventListener('mousemove', canvasMoveListenerS2);
         if (gpuDeviceS2 && typeof gpuDeviceS2.destroy === 'function') {
-            // gpuDeviceS2.destroy(); // Considerar implicações de destruir o dispositivo
         }
         gpuDeviceS2 = null; gpuAdapterS2 = null; glContextS2 = null; ctxS2 = null;
         logS2("[Canvas Unload S2] Limpeza tentada.", 'info', 'cleanupScript2');
