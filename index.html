@@ -2,157 +2,75 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Suite de Vulnerabilidades Avançada (Execução Super Modular)</title>
+    <title>Suite de Vulnerabilidades Avançada (Modular)</title>
     <style>
         body { background: #111; color: #eee; font-family: monospace; padding: 15px; font-size: 14px; }
         #output, #output-canvas, #output-advanced {
             background: #222;
             border: 1px solid #444;
             padding: 10px;
-            height: 60vh; /* Ajustado para dar espaço aos botões */
+            height: 75vh; 
             overflow-y: auto;
-            white-space: pre-wrap; /* Mantém a formatação do log, incluindo quebras de linha */
+            white-space: pre-wrap;
             margin-top: 10px;
-            box-sizing: border-box;
         }
-        .log-info { color: #6cf; }
-        .log-test { color: #fff; font-weight: bold; margin-top: 10px; display: block; border-top: 1px dashed #555; padding-top: 5px; }
-        .log-subtest { color: #eee; font-weight: bold; margin-left: 10px; }
-        .log-vuln { color: #ff4444; font-weight: bold; }
-        .log-good { color: #4CAF50; }
-        .log-warn { color: #FFC107; }
-        .log-error { color: #f44336; font-weight: bold; } /* Erros em negrito para destaque */
-        .log-critical { color: #f0f; font-weight: bold; }
-        .log-leak { color: #FF9800; font-weight: bold; }
-        .log-ptr { color: #f0f; font-weight: bold; } /* Mesmo que critical para ponteiros */
-        .log-escalation { background-color: #800000; color: #fff; font-weight: bold; padding: 1px 3px; border-radius: 3px; display: inline-block; }
+        .log-info { color: #6cf; } .log-test { color: #fff; font-weight: bold; margin-top: 10px; display: block; border-top: 1px dashed #555; padding-top: 5px; } .log-subtest { color: #eee; font-weight: bold; margin-left: 10px; } .log-vuln { color: #ff4444; font-weight: bold; } .log-good { color: #4CAF50; } .log-warn { color: #FFC107; } .log-error { color: #f44336; } .log-critical { color: #f0f; font-weight: bold; } .log-leak { color: #FF9800; font-weight: bold; } .log-ptr { color: #f0f; font-weight: bold; }
+        .log-escalation { background-color: #800000; color: #fff; font-weight: bold; padding: 1px 3px; border-radius: 3px; }
         .log-tool { color: #7FFF00; font-weight: bold; }
 
-        #xss-target-div { border: 2px dotted red; padding: 5px; margin: 15px 0; color: yellow; min-height: 60px; overflow-y: auto; background-color: #2a2a2a; }
+        #xss-target-div { border: 2px dotted red; padding: 5px; margin: 15px 0; color: yellow; min-height: 60px; overflow-y: auto; }
         #interactive-canvas { display: block; border: 1px solid #444; margin-top: 5px; background-color: #333; cursor: default; }
-        #canvas-coord-status { color: #aaa; font-size: 12px; height: 15px; margin-top: 2px; }
-        hr { border: 0; border-top: 1px solid #555; margin: 25px 0; }
-        
-        .section-container {
-            margin-bottom: 25px;
-            padding: 15px;
-            background-color: #1e1e1e;
-            border: 1px solid #333;
-            border-radius: 5px;
-        }
-        .section-container h1, .section-container h2 {
-            margin-top: 0;
-            border-bottom: 1px solid #444;
-            padding-bottom: 5px;
-            color: #00BCD4; /* Ciano para títulos de seção */
-        }
-        
-        button {
-            background-color: #007bff;
-            color: white;
-            border: none;
-            padding: 8px 12px;
-            cursor: pointer;
-            border-radius: 3px;
-            font-family: monospace;
-            font-size: 13px;
-            margin-right: 5px;
-            margin-bottom: 5px;
-        }
-        button:hover { background-color: #0056b3; }
-        button:disabled { background-color: #555; color: #aaa; cursor: not-allowed; }
-
-        #individual-tests-container {
-            background-color: #282828; /* Um pouco mais claro para destacar */
-            padding: 15px;
-            margin-bottom: 25px;
-            border: 1px solid #444;
-            border-radius: 5px;
-        }
-        #individual-tests-container h2 { color: #FF9800; } /* Laranja para o título dos testes individuais */
-        #individual-tests-container button {
-            margin: 4px;
-            padding: 5px 10px;
-            font-size: 12px;
-            background-color: #3e6187; 
-        }
-        #individual-tests-container button:hover:not(:disabled) {
-            background-color: #4a75a3;
-        }
-        .test-group-separator {
-            margin-top: 15px;
-            margin-bottom: 8px;
-            font-weight: bold;
-            color: #ccc; /* Um pouco mais claro para o separador */
-            display: block;
-            border-bottom: 1px dotted #444;
-            padding-bottom: 3px;
-        }
-        .test-group-separator:first-of-type {
-            margin-top: 5px; /* Menos margem para o primeiro separador */
-        }
-
-        .tool-section {
-            margin-top: 20px; padding: 15px; border: 1px solid #555; background-color: #1a1a1a; border-radius: 5px;
-        }
-        .tool-section h3 { margin-top: 0; color: #4CAF50; } /* Verde para títulos de ferramentas */
-        .tool-section input[type="text"], .tool-section textarea {
-            background-color: #333; color: #eee; border: 1px solid #555;
-            padding: 8px; margin-right: 5px; margin-bottom: 10px; width: calc(100% - 22px); /* Melhor ajuste de largura */
-            box-sizing: border-box; font-family: monospace; font-size: 13px; border-radius: 3px;
-        }
-        .tool-section textarea { min-height: 80px; }
-        .tool-section button { font-size: 13px; }
-
+        #canvas-coord-status { color: #aaa; font-size: 12px; height: 15px; }
+        hr { border: 1px solid #555; margin: 20px 0; }
+        .tool-section { margin-top: 20px; padding: 10px; border: 1px solid #555; background-color: #1a1a1a; }
+        .tool-section h3 { margin-top: 0; color: #00FFFF; }
+        .tool-section input[type="text"], .tool-section textarea { background-color: #333; color: #eee; border: 1px solid #555; padding: 5px; margin-right: 5px; width: 200px; }
+        .tool-section button { background-color: #007bff; color: white; border: none; padding: 5px 10px; cursor: pointer; }
+        .tool-section button:hover { background-color: #0056b3; }
     </style>
 </head>
 <body>
-    <div id="individual-tests-container">
-        <h2>Executar Testes Individuais</h2>
-        </div>
-
-    <div class="section-container">
-        <h1>Testes de Vulnerabilidade - Script Principal (S1)</h1>
-        <p>Testa: XSS++, OOB R/W (Tipos), PP Básica/Hijack, IndexedDB++, DOM Stress, APIs Web.</p>
-        <button id="runAllS1Btn">Iniciar Todos os Testes S1</button>
-        <div id="output"></div>
-        <div id="xss-target-div">Área para teste de XSS DOM (Script 1).</div>
-    </div>
+    <h1>Testes de Vulnerabilidade - Script Principal</h1>
+    <p>Testa: XSS++, OOB R/W (Tipos), PP Básica/Hijack, IndexedDB++, DOM Stress, APIs Web.</p>
+    <button id="runBtnS1">Iniciar Testes S1</button>
+    <div id="output"></div>
+    <div id="xss-target-div">Área para teste de XSS DOM.</div>
 
     <hr>
 
-    <div class="section-container">
-        <h2>Suite de Vulnerabilidades - Canvas e APIs Avançadas (S2)</h2>
+    <section>
+        <h2>Suite de Vulnerabilidades - Canvas e APIs Avançadas</h2>
         <p>Foco: PP Avançado++, OOB R/W (Metadata/ImageData), API Checks (GL/GPU/FS), Canvas Interact.</p>
-        <canvas id="interactive-canvas" width="300" height="150"></canvas> <div id="canvas-coord-status">Passe o mouse sobre o canvas</div>
-        <button id="runAllS2Btn">Iniciar Testes S2 (Automáticos + UI Canvas)</button>
+        <canvas id="interactive-canvas" width="300" height="100"></canvas>
+        <div id="canvas-coord-status">Passe o mouse sobre o canvas ?</div>
+        <button id="runCanvasBtnS2">Iniciar Testes Canvas S2</button>
         <div id="output-canvas"></div>
-    </div>
+    </section>
 
     <hr>
 
-    <div class="section-container">
-        <h2>Ferramentas e Testes Avançados - Script 3 (S3)</h2>
+    <section class="tool-section">
+        <h2>Ferramentas e Testes Avançados - Script 3</h2>
         <p>Testes adicionais, ferramentas conceituais e primitivas de baixo nível (simuladas/educacionais).</p>
-        <button id="runAllS3Btn">Iniciar Testes Avançados S3 (Automáticos)</button>
+        <button id="runAdvancedBtnS3">Iniciar Testes Avançados S3</button>
 
-        <div id="rop-builder" class="tool-section">
+        <div id="rop-builder" class="tool-section" style="margin-top:15px;">
             <h3>Construtor de Cadeia ROP (Conceitual)</h3>
-            <textarea id="rop-gadgets-input" placeholder="EndereçoGadget1=Nome (ex: 0x41414141=pop_rax_ret)&#10;EndereçoGadget2=Nome"></textarea>
-            <textarea id="rop-chain-input" placeholder="NomeGadget1&#10;ValorParaRDI (se pop rdi)&#10;NomeGadget2..."></textarea>
+            <textarea id="rop-gadgets-input" rows="5" placeholder="EndereçoGadget1=Nome (ex: 0x41414141=pop_rax_ret)&#10;EndereçoGadget2=Nome"></textarea><br>
+            <textarea id="rop-chain-input" rows="5" placeholder="NomeGadget1&#10;ValorParaRDI (se pop rdi)&#10;NomeGadget2..."></textarea><br>
             <button id="buildRopChainBtn">Construir Cadeia</button>
         </div>
 
-        <div id="memory-viewer" class="tool-section">
-            <h3>Visualizador de Memória (Conceitual)</h3>
+        <div id="memory-viewer" class="tool-section" style="margin-top:15px;">
+            <h3>Visualizador de Memória (Conceitual - Requer Primitiva de Leitura)</h3>
             <input type="text" id="mem-view-addr" placeholder="Endereço (ex: 0x12345000)">
             <input type="text" id="mem-view-size" placeholder="Tamanho (bytes, ex: 64)">
             <button id="viewMemoryBtn">Visualizar Memória</button>
             <p style="font-size:0.8em;">Nota: Isso simula a leitura. Nenhuma leitura real de memória arbitrária ocorre sem um exploit.</p>
         </div>
         <div id="output-advanced"></div>
-    </div>
+    </section>
 
-    <script type="module" src="./js/main.mjs"></script>
+    <script type="module" src="js/main.mjs"></script>
 </body>
 </html>
