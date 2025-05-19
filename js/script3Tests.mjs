@@ -7,6 +7,14 @@ import { JSC_OFFSETS } from './config.mjs'; // Usado em explainMemoryPrimitives
 const SHORT_PAUSE_S3 = 50;
 const MEDIUM_PAUSE_S3 = 500;
 
+export async function testWebAssemblyInterface() { /* ... */ }
+export async function testSharedArrayBufferSupport() { /* ... */ }
+export function explainMemoryPrimitives() { /* ... */ } // Já era exportada no exemplo anterior
+export function buildRopChain() { /* ... */ } // Já era exportada
+export function viewMemory() { /* ... */ } // Já era exportada
+
+export async function runAllAdvancedTestsS3() { /* ... (mantém esta) ... */ }
+
 async function testWebAssemblyInterface() {
     const FNAME = "testWebAssemblyInterface";
     logS3("--- Iniciando Teste de Interface WebAssembly ---", "test", FNAME);
