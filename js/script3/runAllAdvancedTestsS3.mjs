@@ -7,8 +7,9 @@ import { testSharedArrayBufferSupport } from './testSharedArrayBufferSupport.mjs
 import { explainMemoryPrimitives } from './explainMemoryPrimitives.mjs';
 import { testJsonTypeConfusionUAFSpeculative } from './testJsonTypeConfusionUAFSpeculative.mjs'; // Novo teste
 import { testCoreExploitModule } from '../core_exploit.mjs'; // Teste do próprio core_exploit
+import { testCorruptArrayBufferStructure } from './testCorruptArrayBufferStructure.mjs'; // Adicionar esta linha
 
-
+export async function runAllAdvancedTestsS3() {
 export async function runAllAdvancedTestsS3() {
     const FNAME = 'runAllAdvancedTestsS3_Modular';
     const runBtn = getRunBtnAdvancedS3();
@@ -36,7 +37,14 @@ export async function runAllAdvancedTestsS3() {
     await testCoreExploitModule(logS3); // Passa logS3 como função de log
     await PAUSE_S3(MEDIUM_PAUSE_S3);
 
+    await testJsonTypeConfusionUAFSpeculative();
+    await PAUSE_S3(MEDIUM_PAUSE_S3);
 
+    await testCorruptArrayBufferStructure(); // Adicionar chamada
+    await PAUSE_S3(MEDIUM_PAUSE_S3);
+
+    await testCoreExploitModule(logS3);
+    
     logS3("\n==== Script 3 CONCLUÍDO (Testes Automáticos - Modular) ====", 'test', FNAME);
     if (runBtn) runBtn.disabled = false;
 }
