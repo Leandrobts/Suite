@@ -9,6 +9,20 @@ const MEDIUM_PAUSE_S1 = 500;
 // !!! IMPORTANTE: `leakedValueFromOOB_S1` deve estar no escopo do módulo !!!
 let leakedValueFromOOB_S1 = null;
 
+export async function testCSPBypassS1() { /* ... */ }
+export async function testOOBReadInfoLeakEnhancedStoreS1() { /* ... */ }
+export async function testOOBUAFPatternS1() { /* ... */ }
+export async function testOOBOtherTypesS1() { /* ... */ }
+export async function testBasicPPS1() { /* ... */ }
+export async function testPPJsonHijackS1() { /* ... */ }
+export async function testWebSocketsS1() { /* ... */ }
+export async function testWebWorkersS1() { /* ... */ }
+export async function testIndexedDBS1() { /* ... */ }
+export async function testDOMStressS1() { /* ... */ }
+
+export async function runAllTestsS1() { /* ... (mantém esta função agregadora) ... */ }
+export function getLeakedValueS1() { /* ... (mantém este getter) ... */ }
+
 // Funções de ajuda específicas do S1 (isPotentialPointer64S1, etc.)
 // (Mantidas como na sua versão anterior, que parecia funcionar para detecção)
 const isPotentialPointer64S1 = (high, low) => {
