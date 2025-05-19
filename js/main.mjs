@@ -1,83 +1,113 @@
 // js/main.mjs
-import { getRunBtnS1, getRunBtnCanvasS2, getRunBtnAdvancedS3, getBuildRopChainBtn, getViewMemoryBtn, cacheCommonElements } from './dom_elements.mjs';
+import { 
+    getRunBtnS1, getRunBtnCanvasS2, getRunBtnAdvancedS3, 
+    getBuildRopChainBtn, getViewMemoryBtn, cacheCommonElements 
+} from './dom_elements.mjs';
+
+// Importar os runners de cada script
 import { runAllTestsS1 } from './script1/runAllTestsS1.mjs';
-import { runCanvasTestSequenceS2 } from './script2/runCanvasTestSequence.mjs';
+import { runCanvasTest } from './script2/runCanvasTestSequence.mjs'; // A função exportada pelo botão
 import { runAllAdvancedTestsS3 } from './script3/runAllAdvancedTestsS3.mjs';
-import { buildRopChainFromUI } from './script3/rop_builder.mjs';
-// import { viewMemoryFromUI } from './script3/memory_viewer.mjs'; // Assuming this would exist
+
+// Importar handlers para ferramentas interativas do Script 3
+import { buildRopChain } from './script3/rop_builder.mjs';
+// import { viewMemory } from './script3/memory_viewer.mjs'; // Crie este arquivo e importe
+
+// Opcional: Importar e usar config.js se necessário globalmente ou para UI
+// import { OOB_CONFIG, updateOOBConfigFromUI } from '../config.mjs'; // Assumindo config.mjs está um nível acima
 
 function initialize() {
-    console.log("Initializing Vulnerability Suite (Modular)...");
-    cacheCommonElements(); // Optional: Pre-cache known DOM elements
+    console.log("Initializing Vulnerability Suite (Modular Full)...");
+    cacheCommonElements(); 
 
-    const runBtnS1 = getRunBtnS1();
-    if (runBtnS1) {
-        runBtnS1.addEventListener('click', async () => {
-            try {
-                await runAllTestsS1();
-            } catch (e) {
-                console.error("Error running Script 1 tests:", e);
-                // Log to UI as well if a global logger is available here
-            }
+    const btnS1 = getRunBtnS1();
+    if (btnS1) {
+        btnS1.addEventListener('click', async () => {
+            console.log("Botão S1 Clicado");
+            await runAllTestsS1();
         });
-    } else {
-        console.warn("Button for Script 1 not found.");
     }
 
-    const runBtnS2 = getRunBtnCanvasS2();
-    if (runBtnS2) {
-        runBtnS2.addEventListener('click', async () => {
-            try {
-                await runCanvasTestSequenceS2();
-            } catch (e) {
-                console.error("Error running Script 2 tests:", e);
-            }
+    const btnS2 = getRunBtnCanvasS2();
+    if (btnS2) {
+        btnS2.addEventListener('click', async () => {
+            console.log("Botão Canvas S2 Clicado");
+            await runCanvasTest();
         });
-    } else {
-        console.warn("Button for Script 2 not found.");
     }
 
-    const runBtnS3 = getRunBtnAdvancedS3();
-    if (runBtnS3) {
-        runBtnS3.addEventListener('click', async () => {
-            try {
-                await runAllAdvancedTestsS3();
-            } catch (e) {
-                console.error("Error running Script 3 automated tests:", e);
-            }
+    const btnS3 = getRunBtnAdvancedS3();
+    if (btnS3) {
+        btnS3.addEventListener('click', async () => {
+            console.log("Botão Avançado S3 Clicado");
+            await runAllAdvancedTestsS3();
         });
-    } else {
-        console.warn("Button for Script 3 not found.");
     }
     
-    const buildRopBtn = getBuildRopChainBtn();
-    if (buildRopBtn) {
-        buildRopBtn.addEventListener('click', () => {
-             try {
-                buildRopChainFromUI();
-            } catch (e) {
-                console.error("Error building ROP chain from UI:", e);
+    const btnRop = getBuildRopChainBtn();
+    if (btnRop) {
+        btnRop.addEventListener('click', () => {
+            console.log("Botão Construir ROP Clicado");
+            if (typeof buildRopChain === 'function') {
+                buildRopChain();
+            } else {
+                alert("Função buildRopChain não carregada.");
             }
         });
-    } else {
-         console.warn("Button for ROP Builder not found.");
     }
 
-    const viewMemoryBtn = getViewMemoryBtn();
-    if (viewMemoryBtn) {
-        viewMemoryBtn.addEventListener('click', () => {
-            // viewMemoryFromUI(); // Call the respective function
-            console.log("Memory Viewer UI button clicked - function not fully implemented in this demo.");
-             alert("Memory Viewer logic would be called here.");
+    const btnMemView = getViewMemoryBtn();
+    if (btnMemView) {
+        btnMemView.addEventListener('click', () => {
+            console.log("Botão Visualizar Memória Clicado");
+            // if (typeof viewMemory === 'function') {
+            //     viewMemory();
+            // } else {
+            //     alert("Função viewMemory não carregada. Crie js/script3/memory_viewer.mjs");
+            // }
+             alert("Função viewMemory não completamente portada. Crie js/script3/memory_viewer.mjs");
         });
-    } else {
-        console.warn("Button for Memory Viewer not found.");
     }
+    
+    // Lógica para updateOOBConfigFromUI (de config.mjs) se necessário:
+    // Os elementos 'oobAllocSize', 'baseOffset', 'initialBufSize' não existem no HTML fornecido.
+    // Se existissem, você poderia adicionar listeners aqui para atualizar OOB_CONFIG.
+    // Exemplo:
+    // const oobAllocSizeEl = document.getElementById('oobAllocSize'); // Se existisse
+    // if (oobAllocSizeEl) {
+    //   oobAllocSizeEl.addEventListener('change', (event) => {
+    //     const val = parseInt(event.target.value, 10);
+    //     if (!isNaN(val) && val > 0) OOB_CONFIG.ALLOCATION_SIZE = val;
+    //     console.log("OOB_CONFIG.ALLOCATION_SIZE atualizado para:", OOB_CONFIG.ALLOCATION_SIZE);
+    //   });
+    // }
 
-    console.log("Vulnerability Suite Initialized.");
+
+    // Limpeza de listeners do S2 no unload (lógica original)
+    window.addEventListener('unload', () => {
+        try {
+            const canvasElementS2 = document.getElementById('interactive-canvas'); // Query direto pois dom_elements pode não estar disponível no unload
+            const clickListener = getCanvasClickListenerS2(); // Do estado
+            const moveListener = getCanvasMoveListenerS2(); // Do estado
+
+            if (clickListener && canvasElementS2) canvasElementS2.removeEventListener('click', clickListener);
+            if (moveListener && canvasElementS2) canvasElementS2.removeEventListener('mousemove', moveListener);
+            
+            // Limpar outros recursos do S2 se necessário
+            // const gpuDev = getGpuDeviceS2();
+            // if (gpuDev && typeof gpuDev.destroy === 'function') {
+            //     // gpuDev.destroy(); // Cuidado com destroy no unload
+            // }
+        } catch (e) {
+            console.warn("[Canvas Unload S2] Erro na limpeza:", e);
+        }
+        console.log("[Canvas Unload S2] Limpeza tentada.");
+    });
+
+
+    console.log("Vulnerability Suite Initialized (Modular Full).");
 }
 
-// Run initialization when the DOM is ready
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initialize);
 } else {
