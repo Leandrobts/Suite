@@ -1,58 +1,153 @@
 // js/main.mjs
-import { // Funções de teste do Script 1
-    testCSPBypassS1, testOOBReadInfoLeakEnhancedStoreS1, testOOBUAFPatternS1,
-    testOOBOtherTypesS1, testBasicPPS1, testPPJsonHijackS1, testWebSocketsS1,
-    testWebWorkersS1, testIndexedDBS1, testDOMStressS1,
-    runAllTestsS1 // Função agregadora S1
-} from './script1Tests.mjs';
+import { // Utilitários e Configurações Globais
+    logS1, logS2, logS3 
+} from './logger.mjs';
+import { 
+    PAUSE_FUNC // Só PAUSE_FUNC é diretamente usado por runAllTestsS1 aqui. Outros utils são usados pelos testes.
+} from './utils.mjs'; 
+import { 
+    setButtonDisabled, getEl, clearOutput 
+} from './domUtils.mjs';
+import { 
+    updateOOBConfigFromUI 
+} from './config.mjs';
+import { 
+    resetS1LeakState // Para resetar o leak antes de rodar todos os testes S1
+} from './state.mjs';
 
-import { // Funções de teste do Script 2
-    testWebGLCheckS2, testAdvancedPPS2, testOOBWriteMetadataS2,
-    // Adicione aqui importações para os outros testes S2 quando estiverem completos:
-    // testOOBReadEnhancedS2, testWebGLDeeperPlusS2, testOOBWriteToImageDataCheckS2,
-    testFileSystemAccessS2, testWebGPUCheckS2,
-    runCanvasTest, // Função agregadora S2 (que configura UI e executa testes automáticos)
-    cleanupScript2
-} from './script2Tests.mjs';
+// --- Importar TODOS os testes individuais do S1 ---
+import { testCSPBypassS1 } from './tests/s1/testCSPBypassS1.mjs';
+import { testOOBReadInfoLeakS1 } from './tests/s1/testOOBReadInfoLeakS1.mjs';
+import { testOOBUAFPatternS1 } from './tests/s1/testOOBUAFPatternS1.mjs';
+import { testOOBOtherTypesS1 } from './tests/s1/testOOBOtherTypesS1.mjs';
+import { testBasicPPS1 } from './tests/s1/testBasicPPS1.mjs';
+import { testPPJsonHijackS1 } from './tests/s1/testPPJsonHijackS1.mjs';
+import { testWebSocketsS1 } from './tests/s1/testWebSocketsS1.mjs';
+import { testWebWorkersS1 } from './tests/s1/testWebWorkersS1.mjs';
+import { testIndexedDBS1 } from './tests/s1/testIndexedDBS1.mjs';
+import { testDOMStressS1 } from './tests/s1/testDOMStressS1.mjs';
 
-import { // Funções de teste do Script 3
-    testWebAssemblyInterface, testSharedArrayBufferSupport, explainMemoryPrimitives,
-    buildRopChain, viewMemory, // Ferramentas interativas
-    runAllAdvancedTestsS3 // Função agregadora S3
-} from './script3Tests.mjs';
+// --- Importar testes individuais do S2 e o controlador do Canvas ---
+import { initializeCanvasS2, cleanupCanvasS2 } from './ui/canvasControllerS2.mjs';
+import { testWebGLCheckS2 } from './tests/s2/testWebGLCheckS2.mjs';
+import { testAdvancedPPS2 } from './tests/s2/testAdvancedPPS2.mjs';
+import { testOOBWriteMetadataS2 } from './tests/s2/testOOBWriteMetadataS2.mjs';
+import { testFileSystemAccessS2 } from './tests/s2/testFileSystemAccessS2.mjs';
+import { testWebGPUCheckS2 } from './tests/s2/testWebGPUCheckS2.mjs';
+// Adicione outros testes S2 aqui: testOOBReadEnhancedS2, testWebGLDeeperPlusS2, testOOBWriteToImageDataS2
 
-import { updateOOBConfigFromUI } from './config.mjs';
-import { logS1, logS2, logS3 } from './logger.mjs';
-import { setButtonDisabled as genericSetButtonDisabled, getEl, clearOutput } from './domUtils.mjs'; // Renomear para evitar conflito
+// --- Importar testes individuais e ferramentas do S3 ---
+import { testWebAssemblyInterface as testWebAssemblyS3 } from './tests/s3/testWebAssemblyS3.mjs'; // Renomeado para clareza
+import { testSharedArrayBufferSupport as testSharedArrayBufferS3 } from './tests/s3/testSharedArrayBufferS3.mjs'; // Renomeado
+import { explainMemoryPrimitives as explainMemoryPrimitivesS3 } from './tests/s3/explainMemoryPrimitivesS3.mjs'; // Renomeado
+// Para ferramentas, você pode importá-las de arquivos dedicados ou agrupados:
+// import { buildRopChain } from './tests/s3/ropToolS3.mjs';
+// import { viewMemory } from './tests/s3/memoryViewerS3.mjs';
+// Por enquanto, vamos assumir que estão em um arquivo s3Tools.mjs ou similar se você as separar
+// Para este exemplo, vou importar as funções originais que você já tinha no script3Tests.mjs,
+// que agora seriam movidas para seus próprios arquivos e exportadas.
+// Simulando que elas foram movidas para js/tests/s3/
+import { buildRopChain } from './tests/s3/ropToolS3.mjs'; // Assume que você criou este arquivo
+import { viewMemory } from './tests/s3/memoryViewerS3.mjs';   // Assume que você criou este arquivo
 
-// --- Definição dos Testes Individuais ---
-const allIndividualTests = [
-    // Script 1 Tests
-    { label: "S1: XSS Básico", func: testCSPBypassS1, group: 'S1', outputDivId: 'output' },
-    { label: "S1: OOB R/W (Leak)", func: testOOBReadInfoLeakEnhancedStoreS1, group: 'S1', outputDivId: 'output' },
-    { label: "S1: OOB UAF Pattern", func: testOOBUAFPatternS1, group: 'S1', outputDivId: 'output' },
-    { label: "S1: OOB Outros Tipos", func: testOOBOtherTypesS1, group: 'S1', outputDivId: 'output' },
-    { label: "S1: PP Básica", func: testBasicPPS1, group: 'S1', outputDivId: 'output' },
-    { label: "S1: PP JSON Hijack", func: testPPJsonHijackS1, group: 'S1', outputDivId: 'output' },
-    { label: "S1: WebSockets", func: testWebSocketsS1, group: 'S1', outputDivId: 'output' },
-    { label: "S1: Web Workers", func: testWebWorkersS1, group: 'S1', outputDivId: 'output' },
-    { label: "S1: IndexedDB", func: testIndexedDBS1, group: 'S1', outputDivId: 'output' },
-    { label: "S1: DOM Stress", func: testDOMStressS1, group: 'S1', outputDivId: 'output' },
 
-    // Script 2 Tests
-    { label: "S2: WebGL Check", func: testWebGLCheckS2, group: 'S2', outputDivId: 'output-canvas' },
-    { label: "S2: PP Avançado", func: testAdvancedPPS2, group: 'S2', outputDivId: 'output-canvas' },
-    { label: "S2: OOB Write Metadata", func: testOOBWriteMetadataS2, group: 'S2', outputDivId: 'output-canvas' },
-    // { label: "S2: OOB Read Enhanced", func: testOOBReadEnhancedS2, group: 'S2', outputDivId: 'output-canvas' }, // Quando implementado
-    // { label: "S2: WebGL Deeper Plus", func: testWebGLDeeperPlusS2, group: 'S2', outputDivId: 'output-canvas' }, // Quando implementado
-    // { label: "S2: OOB Write ImageData", func: testOOBWriteToImageDataCheckS2, group: 'S2', outputDivId: 'output-canvas' }, // Quando implementado
-    { label: "S2: File System Access", func: testFileSystemAccessS2, group: 'S2', outputDivId: 'output-canvas' },
-    { label: "S2: WebGPU Check", func: testWebGPUCheckS2, group: 'S2', outputDivId: 'output-canvas' },
+const MEDIUM_PAUSE_S1 = 500; // Constantes para as funções "Run All"
+const MEDIUM_PAUSE_S2 = 500;
+const MEDIUM_PAUSE_S3 = 500;
+const SHORT_PAUSE_S3 = 50;
 
-    // Script 3 Tests (Automáticos)
-    { label: "S3: WebAssembly", func: testWebAssemblyInterface, group: 'S3', outputDivId: 'output-advanced' },
-    { label: "S3: SharedArrayBuffer", func: testSharedArrayBufferSupport, group: 'S3', outputDivId: 'output-advanced' },
-    { label: "S3: Explicar Primitivas", func: explainMemoryPrimitives, group: 'S3', outputDivId: 'output-advanced' },
+
+// --- Funções Agregadoras "Run All" ---
+async function runAllS1Tests() {
+    const FNAME = 'runAllS1Tests'; // Nome da função agregadora
+    setButtonDisabled('runAllS1Btn', true);
+    clearOutput('output');
+    resetS1LeakState(); // !!! Resetar o estado do leak ANTES de rodar os testes S1 !!!
+    logS1("==== INICIANDO TODOS OS TESTES S1 (Modular Super Granular) ====", 'test', FNAME);
+
+    // Chamar cada teste S1 individualmente em sequência
+    await testCSPBypassS1(); await PAUSE_FUNC(MEDIUM_PAUSE_S1);
+    await testOOBReadInfoLeakS1(); await PAUSE_FUNC(MEDIUM_PAUSE_S1);
+    await testOOBUAFPatternS1(); await PAUSE_FUNC(MEDIUM_PAUSE_S1);
+    await testOOBOtherTypesS1(); await PAUSE_FUNC(MEDIUM_PAUSE_S1);
+    await testBasicPPS1(); await PAUSE_FUNC(MEDIUM_PAUSE_S1);
+    await testPPJsonHijackS1(); await PAUSE_FUNC(MEDIUM_PAUSE_S1);
+    await testWebSocketsS1(); await PAUSE_FUNC(MEDIUM_PAUSE_S1);
+    await testWebWorkersS1(); await PAUSE_FUNC(MEDIUM_PAUSE_S1);
+    await testIndexedDBS1(); await PAUSE_FUNC(MEDIUM_PAUSE_S1);
+    await testDOMStressS1(); await PAUSE_FUNC(MEDIUM_PAUSE_S1);
+
+    logS1("\n==== TODOS OS TESTES S1 CONCLUÍDOS (Modular Super Granular) ====", 'test', FNAME);
+    setButtonDisabled('runAllS1Btn', false);
+}
+
+async function runAllS2TestsAndUI() {
+    const FNAME = 'runAllS2TestsAndUI';
+    setButtonDisabled('runAllS2Btn', true);
+    clearOutput('output-canvas');
+    logS2("==== INICIANDO TESTES S2 E UI DO CANVAS (Modular Super Granular) ====", 'test', FNAME);
+    
+    // Lista de testes automáticos do S2 para passar ao inicializador do canvas
+    const s2AutoTests = [
+        testWebGLCheckS2,
+        testAdvancedPPS2,
+        testOOBWriteMetadataS2, // Este agora tem lógica
+        testFileSystemAccessS2,
+        testWebGPUCheckS2,
+        // Adicione outros testes S2 automáticos aqui quando estiverem prontos
+        // testOOBReadEnhancedS2,
+        // testWebGLDeeperPlusS2,
+        // testOOBWriteToImageDataS2
+    ];
+    
+    initializeCanvasS2(true, s2AutoTests); // true para rodar testes automáticos
+
+    // Nota: initializeCanvasS2 agora roda os testes automáticos de forma assíncrona (não bloqueante).
+    // O log de conclusão aqui será para a inicialização da UI.
+    logS2("UI do Canvas S2 inicializada. Testes automáticos podem estar em execução.", 'info', FNAME);
+    setButtonDisabled('runAllS2Btn', false); // Reabilitar o botão após iniciar
+}
+
+
+async function runAllS3Tests() {
+    const FNAME = 'runAllS3Tests';
+    setButtonDisabled('runAllS3Btn', true);
+    clearOutput('output-advanced');
+    logS3("==== INICIANDO TESTES AUTOMÁTICOS S3 (Modular Super Granular) ====", 'test', FNAME);
+
+    await testWebAssemblyS3(); await PAUSE_FUNC(MEDIUM_PAUSE_S3);
+    await testSharedArrayBufferS3(); await PAUSE_FUNC(MEDIUM_PAUSE_S3);
+    explainMemoryPrimitivesS3(); await PAUSE_FUNC(SHORT_PAUSE_S3);
+
+    logS3("\n==== TESTES AUTOMÁTICOS S3 CONCLUÍDOS (Modular Super Granular) ====", 'test', FNAME);
+    setButtonDisabled('runAllS3Btn', false);
+}
+
+
+// --- Definição e Criação dos Botões de Teste Individuais ---
+const ALL_INDIVIDUAL_TEST_DEFINITIONS = [
+    // S1
+    { label: "S1: XSS Básico", func: testCSPBypassS1, group: 'S1' },
+    { label: "S1: OOB R/W (Leak)", func: testOOBReadInfoLeakS1, group: 'S1' },
+    { label: "S1: OOB UAF Pattern", func: testOOBUAFPatternS1, group: 'S1' },
+    { label: "S1: OOB Outros Tipos", func: testOOBOtherTypesS1, group: 'S1' },
+    { label: "S1: PP Básica", func: testBasicPPS1, group: 'S1' },
+    { label: "S1: PP JSON Hijack", func: testPPJsonHijackS1, group: 'S1' },
+    { label: "S1: WebSockets", func: testWebSocketsS1, group: 'S1' },
+    { label: "S1: Web Workers", func: testWebWorkersS1, group: 'S1' },
+    { label: "S1: IndexedDB", func: testIndexedDBS1, group: 'S1' },
+    { label: "S1: DOM Stress", func: testDOMStressS1, group: 'S1' },
+    // S2
+    { label: "S2: WebGL Check", func: testWebGLCheckS2, group: 'S2' },
+    { label: "S2: PP Avançado", func: testAdvancedPPS2, group: 'S2' },
+    { label: "S2: OOB Write Metadata", func: testOOBWriteMetadataS2, group: 'S2' },
+    { label: "S2: File System Access", func: testFileSystemAccessS2, group: 'S2' },
+    { label: "S2: WebGPU Check", func: testWebGPUCheckS2, group: 'S2' },
+    // Adicione os outros testes S2 aqui quando estiverem em arquivos individuais
+    // S3
+    { label: "S3: WebAssembly", func: testWebAssemblyS3, group: 'S3' },
+    { label: "S3: SharedArrayBuffer", func: testSharedArrayBufferS3, group: 'S3' },
+    { label: "S3: Explicar Primitivas", func: explainMemoryPrimitivesS3, group: 'S3' },
 ];
 
 function getLoggerForGroup(group) {
@@ -68,69 +163,69 @@ function initializeIndividualTestButtons() {
         console.error("Contêiner 'individual-tests-container' não encontrado.");
         return;
     }
+    container.innerHTML = '<h2>Executar Testes Individuais</h2>'; // Limpar e adicionar título
 
     let currentGroup = null;
-    allIndividualTests.forEach((test, index) => {
-        if (test.group !== currentGroup) {
-            if (currentGroup !== null) { // Adicionar <hr> entre grupos, exceto antes do primeiro
-                // const hr = document.createElement('hr');
-                // container.appendChild(hr);
-            }
+    ALL_INDIVIDUAL_TEST_DEFINITIONS.forEach((testDef, index) => {
+        if (!testDef.func) {
+            console.warn(`Função de teste não definida para: ${testDef.label}`);
+            return; // Pular se a função não estiver definida (ex: testes S2 ainda não portados)
+        }
+
+        if (testDef.group !== currentGroup) {
             const groupLabel = document.createElement('span');
             groupLabel.className = 'test-group-separator';
-            groupLabel.textContent = `--- Testes do Script ${test.group} ---`;
+            groupLabel.textContent = `--- Testes do Script ${testDef.group} ---`;
             container.appendChild(groupLabel);
-            currentGroup = test.group;
+            currentGroup = testDef.group;
         }
 
         const button = document.createElement('button');
-        button.textContent = test.label;
-        button.id = `runTest-${test.group}-${index}`; // ID único para cada botão
+        button.textContent = testDef.label;
+        button.id = `runIndTest-${testDef.group}-${index}`;
 
         button.onclick = async () => {
-            const logger = getLoggerForGroup(test.group);
-            logger(`--- Iniciando teste individual: ${test.label} ---`, 'test', test.func.name);
-            genericSetButtonDisabled(button.id, true);
-            // Desabilitar todos os outros botões de teste individual e os "run all" para evitar concorrência
-            document.querySelectorAll('#individual-tests-container button, #runBtnS1, #runCanvasBtn, #runAdvancedBtn').forEach(btn => {
-                if (btn.id !== button.id) genericSetButtonDisabled(btn.id, true);
-            });
-
+            const logger = getLoggerForGroup(testDef.group);
+            const testNameForLog = testDef.func.name || testDef.label.split(': ')[1].replace(/\s/g, '');
+            
+            logger(`--- Iniciando teste individual: ${testDef.label} ---`, 'test', testNameForLog);
+            
+            // Desabilitar todos os botões de teste (individuais e "run all")
+            const allTestButtons = document.querySelectorAll(
+                '#individual-tests-container button, #runAllS1Btn, #runAllS2Btn, #runAllS3Btn'
+            );
+            allTestButtons.forEach(btn => btn.disabled = true);
 
             try {
-                await test.func(); // Executa a função de teste individual
+                await testDef.func();
             } catch (e) {
-                logger(`Erro EXCEPCIONAL no teste individual ${test.label}: ${e.message}`, 'critical', test.func.name);
-                console.error(`Erro EXCEPCIONAL no teste individual ${test.label}:`, e);
+                logger(`Erro EXCEPCIONAL no teste individual ${testDef.label}: ${e.message}`, 'critical', testNameForLog);
+                console.error(`Erro EXCEPCIONAL no teste individual ${testDef.label}:`, e);
             } finally {
-                logger(`--- Teste individual ${test.label} concluído ---`, 'test', test.func.name);
-                genericSetButtonDisabled(button.id, false);
-                // Reabilitar todos os outros botões
-                 document.querySelectorAll('#individual-tests-container button, #runBtnS1, #runCanvasBtn, #runAdvancedBtn').forEach(btn => {
-                     genericSetButtonDisabled(btn.id, false);
-                 });
+                logger(`--- Teste individual ${testDef.label} concluído ---`, 'test', testNameForLog);
+                allTestButtons.forEach(btn => btn.disabled = false); // Reabilitar todos
             }
         };
         container.appendChild(button);
     });
 }
 
-
+// --- Função Principal de Inicialização ---
 function initialize() {
-    console.log("Suite de Vulnerabilidades Modular (Execução Individual) Inicializada.");
+    console.log("Suite de Vulnerabilidades (Super Modular) Inicializada.");
 
     // Botões "Run All"
-    const runBtnS1El = getEl('runBtnS1');
-    if (runBtnS1El) runBtnS1El.onclick = runAllTestsS1;
-    else console.error("Botão 'runBtnS1' não encontrado.");
+    const runAllS1BtnEl = getEl('runAllS1Btn');
+    if (runAllS1BtnEl) runAllS1BtnEl.onclick = runAllS1Tests;
+    else console.error("Botão 'runAllS1Btn' não encontrado.");
 
-    const runCanvasBtnEl = getEl('runCanvasBtn');
-    if (runCanvasBtnEl) runCanvasBtnEl.onclick = runCanvasTest;
-    else console.error("Botão 'runCanvasBtn' não encontrado.");
+    const runAllS2BtnEl = getEl('runAllS2Btn');
+    if (runAllS2BtnEl) runAllS2BtnEl.onclick = runAllS2TestsAndUI;
+    else console.error("Botão 'runAllS2Btn' não encontrado.");
 
-    const runAdvancedBtnEl = getEl('runAdvancedBtn');
-    if (runAdvancedBtnEl) runAdvancedBtnEl.onclick = runAllAdvancedTestsS3;
-    else console.error("Botão 'runAdvancedBtn' não encontrado.");
+    const runAllS3BtnEl = getEl('runAllS3Btn');
+    if (runAllS3BtnEl) runAllS3BtnEl.onclick = runAllS3Tests;
+    else console.error("Botão 'runAllS3Btn' não encontrado.");
 
     // Ferramentas Interativas S3
     const buildRopBtnEl = getEl('buildRopChainBtn');
@@ -147,27 +242,29 @@ function initialize() {
     try {
         updateOOBConfigFromUI(document);
     } catch (e) {
-        console.warn("Não foi possível atualizar OOB_CONFIG a partir da UI (elementos podem estar faltando):", e.message);
+        console.warn("Não foi possível atualizar OOB_CONFIG a partir da UI:", e.message);
     }
 
     // Listener para XSS postMessage
     window.addEventListener('message', (event) => {
-        if (event.data && event.data.type) {
-            const logger = getLoggerForGroup(event.data.type.replace('log', '')); // logS1 -> S1
+        if (event.data && event.data.type && typeof event.data.type === 'string') {
+            const loggerKey = event.data.type.replace('log', ''); // "logS1" -> "S1"
+            const logger = getLoggerForGroup(loggerKey);
             if (logger && event.data.args && event.data.args.length >= 1) {
                 logger(
-                    event.data.args[0], // message
-                    event.data.args[1] || 'info', // type
-                    event.data.args[2] || '' // funcName
+                    event.data.args[0], 
+                    event.data.args[1] || 'info', 
+                    event.data.args[2] || '' 
                 );
             }
         }
     });
 
     // Limpeza do S2 no unload da página
-    window.addEventListener('unload', cleanupScript2);
+    window.addEventListener('unload', cleanupCanvasS2);
 }
 
+// Inicializar quando o DOM estiver pronto
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initialize);
 } else {
