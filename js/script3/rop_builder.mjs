@@ -3,9 +3,9 @@ import { logS3 } from './s3_utils.mjs';
 import { getRopGadgetsInput, getRopChainInput } from '../dom_elements.mjs';
 import { AdvancedInt64 } from '../utils.mjs';
 
-export function buildRopChain() { // Renomeado para corresponder ao HTML original
-    const FNAME = "buildRopChain";
-    logS3("--- Construtor de Cadeia ROP (Conceitual) ---", "tool", FNAME);
+export function buildRopChainFromUI() { // Renomeado no exemplo anterior, mantendo para consistência
+    const FNAME = "buildRopChainFromUI"; // Nome da função JS
+    logS3("--- Construtor de Cadeia ROP (Conceitual - S3) ---", "tool", FNAME);
     
     const gadgetsInputEl = getRopGadgetsInput();
     const chainInputEl = getRopChainInput();
@@ -28,8 +28,13 @@ export function buildRopChain() { // Renomeado para corresponder ao HTML origina
             if (line.trim()) {
                 const parts = line.split('=');
                 if (parts.length === 2) {
-                    const addr = new AdvancedInt64(parts[0].trim());
-                    gadgetMap.set(parts[1].trim(), addr);
+                    // Tenta criar AdvancedInt64, mas captura erros se o formato do endereço for inválido
+                    try {
+                        const addr = new AdvancedInt64(parts[0].trim());
+                        gadgetMap.set(parts[1].trim(), addr);
+                    } catch (addrError) {
+                        logS3(`AVISO: Endereço de gadget inválido '${parts[0].trim()}' para '${parts[1].trim()}'. Pulando. Erro: ${addrError.message}`, 'warn', FNAME);
+                    }
                 }
             }
         });
@@ -37,15 +42,14 @@ export function buildRopChain() { // Renomeado para corresponder ao HTML origina
         gadgetMap.forEach((addr, name) => logS3(`  ${name} : ${addr.toString(true)}`, "info"));
 
     } catch (e) {
-        logS3(`Erro ao processar gadgets: ${e.message}`, "error", FNAME);
+        logS3(`Erro ao processar gadgets (S3): ${e.message}`, "error", FNAME);
         return;
     }
 
     const ropChain = [];
     const chainSteps = chainInput.split('\n');
-    let validChain = true; // Não usado no original, mas bom para ter
 
-    logS3("Construindo cadeia ROP:", "info", FNAME);
+    logS3("Construindo cadeia ROP (S3):", "info", FNAME);
     for (const step of chainSteps) {
         const trimmedStep = step.trim();
         if (!trimmedStep) continue;
@@ -56,23 +60,26 @@ export function buildRopChain() { // Renomeado para corresponder ao HTML origina
             logS3(`  [GADGET] ${trimmedStep} -> ${gadgetAddr.toString(true)}`, "info", FNAME);
         } else { 
             try {
-                const value = trimmedStep.toLowerCase().startsWith("0x") ? new AdvancedInt64(trimmedStep) : new AdvancedInt64(parseInt(trimmedStep));
+                // Tenta interpretar como um valor numérico (hex ou dec)
+                const value = trimmedStep.toLowerCase().startsWith("0x") 
+                              ? new AdvancedInt64(trimmedStep) 
+                              : new AdvancedInt64(parseInt(trimmedStep, 10)); // Assumir decimal se não for 0x
                 ropChain.push(value);
                 logS3(`  [VALOR]  ${trimmedStep} -> ${value.toString(true)}`, "info", FNAME);
             } catch (e) {
-                logS3(`AVISO: '${trimmedStep}' não é um gadget conhecido nem um valor numérico válido. Tratando como string.`, "warn", FNAME);
-                ropChain.push(trimmedStep); 
+                logS3(`AVISO: '${trimmedStep}' não é um gadget conhecido nem um valor numérico válido. Tratando como string/placeholder.`, "warn", FNAME);
+                ropChain.push(trimmedStep); // Adiciona como string se não puder ser convertido
             }
         }
     }
 
     if (ropChain.length > 0) {
-        logS3("Cadeia ROP construída (endereços/valores):", "good", FNAME);
+        logS3("Cadeia ROP construída (endereços/valores - S3):", "good", FNAME);
         ropChain.forEach((item, index) => {
-            logS3(`    ${index}: ${(item instanceof AdvancedInt64) ? item.toString(true) : item}`, "info");
+            logS3(`    ${index}: ${(item instanceof AdvancedInt64) ? item.toString(true) : String(item)}`, "info");
         });
         logS3("Nota: Esta é uma representação. A execução real requereria controle do ponteiro de stack (RSP) e um 'ret' inicial.", "info", FNAME);
     } else {
-        logS3("Nenhuma cadeia ROP construída.", "warn", FNAME);
+        logS3("Nenhuma cadeia ROP construída (S3).", "warn", FNAME);
     }
 }
