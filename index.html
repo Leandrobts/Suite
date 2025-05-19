@@ -2,14 +2,15 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Suite de Vulnerabilidades Avançada (Modular)</title>
+    <title>Suite de Vulnerabilidades Avançada (Modular Execução Individual)</title>
     <style>
+        /* ... (seus estilos CSS existentes) ... */
         body { background: #111; color: #eee; font-family: monospace; padding: 15px; font-size: 14px; }
         #output, #output-canvas, #output-advanced {
             background: #222;
             border: 1px solid #444;
             padding: 10px;
-            height: 80vh; /* Aumentado para mais logs */
+            height: 65vh; /* Reduzir um pouco para dar espaço aos botões */
             overflow-y: auto;
             white-space: pre-wrap;
             margin-top: 10px;
@@ -27,12 +28,40 @@
         .tool-section input[type="text"], .tool-section textarea { background-color: #333; color: #eee; border: 1px solid #555; padding: 5px; margin-right: 5px; width: 200px; }
         .tool-section button { background-color: #007bff; color: white; border: none; padding: 5px 10px; cursor: pointer; }
         .tool-section button:hover { background-color: #0056b3; }
+
+        #individual-tests-container {
+            background-color: #1a1a1a;
+            padding: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #444;
+        }
+        #individual-tests-container h2 { margin-top: 0; color: #00FFFF; }
+        #individual-tests-container button {
+            margin: 3px;
+            padding: 4px 8px;
+            font-size: 12px;
+            background-color: #005f87; /* Cor diferente para botões individuais */
+        }
+        #individual-tests-container button:hover {
+            background-color: #007bff;
+        }
+        .test-group-separator {
+            margin-top: 10px;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #eee;
+            display: block;
+        }
     </style>
 </head>
 <body>
+    <div id="individual-tests-container">
+        <h2>Executar Testes Individuais</h2>
+        </div>
+
     <h1>Testes de Vulnerabilidade - Script Principal</h1>
     <p>Testa: XSS++, OOB R/W (Tipos), PP Básica/Hijack, IndexedDB++, DOM Stress, APIs Web.</p>
-    <button id="runBtnS1">Iniciar Testes S1</button>
+    <button id="runBtnS1">Iniciar Todos os Testes S1</button>
     <div id="output"></div>
     <div id="xss-target-div">Área para teste de XSS DOM (Script 1).</div>
 
@@ -43,7 +72,7 @@
         <p>Foco: PP Avançado++, OOB R/W (Metadata/ImageData), API Checks (GL/GPU/FS), Canvas Interact.</p>
         <canvas id="interactive-canvas" width="300" height="100"></canvas>
         <div id="canvas-coord-status">Passe o mouse sobre o canvas ?</div>
-        <button id="runCanvasBtn">Iniciar Testes Canvas S2</button>
+        <button id="runCanvasBtn">Iniciar Testes Canvas S2 (Automáticos + UI)</button>
         <div id="output-canvas"></div>
     </section>
 
@@ -52,7 +81,7 @@
     <section class="tool-section">
         <h2>Ferramentas e Testes Avançados - Script 3</h2>
         <p>Testes adicionais, ferramentas conceituais e primitivas de baixo nível (simuladas/educacionais).</p>
-        <button id="runAdvancedBtn">Iniciar Testes Avançados S3</button>
+        <button id="runAdvancedBtn">Iniciar Testes Avançados S3 (Automáticos)</button>
 
         <div id="rop-builder" class="tool-section" style="margin-top:15px;">
             <h3>Construtor de Cadeia ROP (Conceitual)</h3>
