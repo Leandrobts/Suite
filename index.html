@@ -1,0 +1,41 @@
+<script type="module">
+        import { runAllTestsS1 } from './js/script1Tests.mjs';
+        import { runCanvasTest } from './js/script2Tests.mjs';
+        import { runAllAdvancedTestsS3, buildRopChain, viewMemory } from './js/script3Tests.mjs';
+        import { updateOOBConfigFromUI } from './js/config.mjs'; // Se a UI do OOB_CONFIG ainda for usada
+
+        // Anexar aos botões
+        document.getElementById('runBtnS1').onclick = runAllTestsS1; // Renomeado de runBtn
+        document.getElementById('runCanvasBtn').onclick = runCanvasTest;
+        document.getElementById('runAdvancedBtn').onclick = runAllAdvancedTestsS3;
+
+        // Para as ferramentas do Script 3
+        // Se os botões das ferramentas já têm onclick no HTML, eles precisam ser
+        // expostos globalmente ou os listeners adicionados aqui:
+        window.buildRopChain = buildRopChain; // Expor globalmente ou...
+        document.querySelector('#rop-builder button').onclick = buildRopChain; // Melhor forma
+
+        window.viewMemory = viewMemory; // Expor globalmente ou...
+        document.querySelector('#memory-viewer button').onclick = viewMemory; // Melhor forma
+
+        // Se houver inputs para OOB_CONFIG que precisam ser lidos:
+        // updateOOBConfigFromUI(document); // Chamar uma vez na inicialização se necessário
+        // Ou chamar dentro dos testes relevantes antes de usar OOB_CONFIG.
+        // Os elementos de input para OOB_CONFIG não estavam no HTML original,
+        // mas a função `updateOOBConfigFromUI` estava no seu `config.mjs`.
+        // Se eles existirem, garanta que `updateOOBConfigFromUI` seja chamada.
+
+        // Para comunicação de XSS payloads com o logger (se usar postMessage)
+        window.addEventListener('message', (event) => {
+          // Verifique event.origin para segurança se o iframe for de uma origem diferente
+          if (event.data && event.data.type === 'logS1') {
+            // Importar e usar logS1 aqui ou re-emitir para o módulo logger
+            // Exemplo: import { logS1 } from './js/logger.mjs';
+            // logS1(event.data.args[0], event.data.args[1], event.data.args[2]);
+            console.warn("Log message from XSS payload received, integrate with logger.mjs: ", event.data.args)
+          }
+        });
+
+    </script>
+</body>
+</html>
