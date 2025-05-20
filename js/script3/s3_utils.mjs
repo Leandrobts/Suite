@@ -4,7 +4,7 @@ import { PAUSE as genericPause } from '../utils.mjs';
 
 export const SHORT_PAUSE_S3 = 50;
 export const MEDIUM_PAUSE_S3 = 500;
-export const LONG_PAUSE_S3 = 2000; // Adicionada para pausas mais longas, se necessário
+export const LONG_PAUSE_S3 = 2000; // Já estava aqui, garantir que está sendo exportada e usada corretamente
 
 export const logS3 = (message, type = 'info', funcName = '') => {
     logToDiv('output-advanced', message, type, funcName);
