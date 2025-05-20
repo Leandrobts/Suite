@@ -2,13 +2,13 @@
 import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3, SHORT_PAUSE_S3 } from './s3_utils.mjs';
 import { getOutputAdvancedS3, getRunBtnAdvancedS3 } from '../dom_elements.mjs';
 
-import { testWebAssemblyInterface } from './testWebAssembly.mjs'; // Corrigido para nome do arquivo
+import { testWebAssemblyInterface } from './testWebAssembly.mjs';
 import { testSharedArrayBufferSupport } from './testSharedArrayBufferSupport.mjs';
 import { explainMemoryPrimitives } from './explainMemoryPrimitives.mjs';
 import { testJsonTypeConfusionUAFSpeculative } from './testJsonTypeConfusionUAFSpeculative.mjs';
 import { testCorruptArrayBufferStructure } from './testCorruptArrayBufferStructure.mjs';
-import { discoverStructureIDs } from './readStructureIDs.mjs'; // NOVO TESTE
-import { testCoreExploitModule } from '../core_exploit.mjs'; // Ajuste o caminho se core_exploit.mjs estiver em js/ e não js/script3/
+import { discoverStructureIDs } from './readStructureIDs.mjs';
+import { testCoreExploitModule } from '../core_exploit.mjs';
 
 export async function runAllAdvancedTestsS3() {
     const FNAME = 'runAllAdvancedTestsS3_Modular';
@@ -29,11 +29,9 @@ export async function runAllAdvancedTestsS3() {
     explainMemoryPrimitives();
     await PAUSE_S3(SHORT_PAUSE_S3);
 
-    // Etapa de Descoberta de IDs (executar antes dos testes que dependem deles)
     await discoverStructureIDs();
     await PAUSE_S3(MEDIUM_PAUSE_S3);
     logS3("Continuando com outros testes avançados após a tentativa de descoberta de IDs...", "info", FNAME);
-
 
     await testJsonTypeConfusionUAFSpeculative();
     await PAUSE_S3(MEDIUM_PAUSE_S3);
@@ -41,14 +39,12 @@ export async function runAllAdvancedTestsS3() {
     await testCorruptArrayBufferStructure();
     await PAUSE_S3(MEDIUM_PAUSE_S3);
 
-    // Teste do módulo core_exploit em si
-    if (typeof testCoreExploitModule === 'function') { // Verifica se foi importado corretamente
-        await testCoreExploitModule(logS3); // Passa logS3 como função de log
+    if (typeof testCoreExploitModule === 'function') {
+        await testCoreExploitModule(logS3);
         await PAUSE_S3(MEDIUM_PAUSE_S3);
     } else {
         logS3("AVISO: testCoreExploitModule não encontrado/importado.", "warn", FNAME);
     }
-
 
     logS3("\n==== Script 3 CONCLUÍDO (Testes Automáticos - Modular) ====", 'test', FNAME);
     if (runBtn) runBtn.disabled = false;
