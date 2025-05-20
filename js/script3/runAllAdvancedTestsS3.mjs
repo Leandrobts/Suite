@@ -2,7 +2,7 @@
 import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3, SHORT_PAUSE_S3 } from './s3_utils.mjs';
 import { getOutputAdvancedS3, getRunBtnAdvancedS3 } from '../dom_elements.mjs';
 
-import { testWebAssemblyInterface } from './testWebAssembly.mjs';
+import { testWebAssemblyInterface } from './testWebAssembly.mjs'; // Corrigido para nome do arquivo
 import { testSharedArrayBufferSupport } from './testSharedArrayBufferSupport.mjs';
 import { explainMemoryPrimitives } from './explainMemoryPrimitives.mjs';
 import { testJsonTypeConfusionUAFSpeculative } from './testJsonTypeConfusionUAFSpeculative.mjs';
@@ -26,7 +26,7 @@ export async function runAllAdvancedTestsS3() {
     await testSharedArrayBufferSupport();
     await PAUSE_S3(MEDIUM_PAUSE_S3);
 
-    explainMemoryPrimitives();
+    explainMemoryPrimitives(); // Agora deve funcionar com toHex importado corretamente
     await PAUSE_S3(SHORT_PAUSE_S3);
 
     await discoverStructureIDs();
