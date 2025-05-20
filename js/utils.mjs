@@ -34,7 +34,7 @@ export class AdvancedInt64 {
             buffer[1] = high;
         } else if (typeof low === 'string') {
             let hexstr = low;
-            if (hexstr.substring(0, 2) === "0x") { hexstr = hexstr.substring(2); }
+            if (hexstr.substring(0, 2).toLowerCase() === "0x") { hexstr = hexstr.substring(2); } // toLowerCase para 0X
             if (hexstr.length % 2 === 1) { hexstr = '0' + hexstr; }
             if (hexstr.length > 16) { hexstr = hexstr.substring(hexstr.length - 16); }
             else { hexstr = hexstr.padStart(16, '0');}
@@ -42,7 +42,7 @@ export class AdvancedInt64 {
             for (let i = 0; i < 8; i++) {
                 bytes[i] = parseInt(hexstr.slice(14 - i*2, 16 - i*2), 16);
             }
-        } else if (typeof low === 'object' && low !== null) { // Adicionado low !== null
+        } else if (typeof low === 'object' && low !== null) {
             if (low instanceof AdvancedInt64 || (low && low._isAdvancedInt64 === true)) {
                 bytes.set(low.bytes);
             } else if (low.length === 8) { // Assuming byte array
@@ -103,6 +103,26 @@ export class AdvancedInt64 {
         if (typeof num !== 'number' || !Number.isFinite(num)) {
             throw new TypeError("AdvancedInt64.fromNumber espera um número finito.");
         }
+        // Handle negative numbers by converting to their 64-bit two's complement representation
+        if (num < 0) {
+            // For negative numbers, it's easier to represent them by their absolute value,
+            // negate that, and then construct. Or handle via direct bit manipulation if necessary.
+            // This simplified fromNumber might not perfectly handle all negative JS numbers to 64-bit.
+            // A more robust way for negatives:
+            // if (num < 0) {
+            //    let absNum = Math.abs(num);
+            //    let high = Math.floor(absNum / Math.pow(2, 32));
+            //    let low = absNum % Math.pow(2, 32);
+            //    let temp = new AdvancedInt64(low, high);
+            //    return temp.neg();
+            // }
+            // However, direct calculation for negative numbers is tricky with JS bitwise ops for 64-bit.
+            // The current constructor handles negative numbers by their 32-bit parts correctly.
+            const high = Math.floor(num / (0x100000000)); // 2^32
+            const low = num % (0x100000000);
+            return new AdvancedInt64(low >>> 0, high >>> 0); // Ensure they are treated as unsigned in parts
+        }
+
         const high = Math.floor(num / Math.pow(2, 32));
         const low = num % Math.pow(2, 32);
         return new AdvancedInt64(low, high);
@@ -115,22 +135,25 @@ export function isAdvancedInt64Object(obj) {
 
 export const readWriteUtils = {
     readBytes: (u8_view, offset, size) => {
+        if (offset + size > u8_view.byteLength) throw new RangeError("Read out of bounds");
         let res = 0;
         for (let i = 0; i < size; i++) {
             res += u8_view[offset + i] << (i * 8);
         }
-        return res >>> 0; // Garante que é um uint32 para valores de até 4 bytes
+        return res >>> 0;
     },
     read16: (u8_view, offset) => readWriteUtils.readBytes(u8_view, offset, 2),
     read32: (u8_view, offset) => readWriteUtils.readBytes(u8_view, offset, 4),
     read64: (u8_view, offset) => {
-        let resBytes = [];
+        if (offset + 8 > u8_view.byteLength) throw new RangeError("Read 64-bit out of bounds");
+        let resBytes = new Uint8Array(8); // Criar um novo array para os bytes
         for (let i = 0; i < 8; i++) {
-            resBytes.push(u8_view[offset + i]);
+            resBytes[i] = u8_view[offset + i];
         }
-        return new AdvancedInt64(resBytes); // Passa o array de bytes
+        return new AdvancedInt64(resBytes);
     },
     writeBytes: (u8_view, offset, value, size) => {
+        if (offset + size > u8_view.byteLength) throw new RangeError("Write out of bounds");
         for (let i = 0; i < size; i++) {
             u8_view[offset + i] = (value >>> (i * 8)) & 0xff;
         }
@@ -139,7 +162,8 @@ export const readWriteUtils = {
     write32: (u8_view, offset, value) => readWriteUtils.writeBytes(u8_view, offset, value, 4),
     write64: (u8_view, offset, value) => {
         if (!isAdvancedInt64Object(value)) { throw TypeError('write64 value must be an AdvancedInt64 object'); }
-        u8_view.set(value.bytes, offset); // Mais simples e correto
+        if (offset + 8 > u8_view.byteLength) throw new RangeError("Write 64-bit out of bounds");
+        u8_view.set(value.bytes, offset);
     }
 };
 
@@ -147,50 +171,51 @@ export const generalUtils = {
     align: (addrOrInt, alignment) => {
         let a = (isAdvancedInt64Object(addrOrInt)) ? addrOrInt : new AdvancedInt64(addrOrInt);
         let low = a.low();
-        let high = a.high(); // Alinhamento não deve afetar a parte alta em cenários comuns
+        let high = a.high();
         low = (low + alignment -1) & (~(alignment-1));
         return new AdvancedInt64(low, high);
     },
     str2array: (str, length, offset = 0) => {
         let a = new Array(length);
-        for (let i = 0; i < length; i++) {
+        for (let i = 0; i < length && (i + offset < str.length); i++) { // Adicionado bound check
             a[i] = str.charCodeAt(i + offset);
         }
         return a;
     }
 };
 
-// Estes são offsets genéricos de JS, não específicos de JSC necessariamente,
-// mas podem ser úteis se você estiver interpretando estruturas de TypedArray/DataView.
-// O JSC_OFFSETS.ArrayBufferView é mais específico para JSC.
-export const jscOffsets = { // Renomeado para genericJsOffsets ou similar se não for mais JSC específico
-    js_butterfly: JSC_OFFSETS.JSObject.BUTTERFLY_OFFSET, // Usar o do config para consistência
-    view_m_vector: JSC_OFFSETS.ArrayBufferView.M_VECTOR_OFFSET,
-    view_m_length: JSC_OFFSETS.ArrayBufferView.M_LENGTH_OFFSET,
-    view_m_mode: JSC_OFFSETS.ArrayBufferView.M_MODE_OFFSET,
-    size_view: 0x20, // Especulativo, validar ou remover se não usado
-};
-
+// Removido: export const jscOffsets = { ... };
+// Os módulos que precisam de JSC_OFFSETS devem importá-los diretamente de config.mjs.
 
 export const PAUSE = (ms = 50) => new Promise(r => setTimeout(r, ms));
 
 export const toHex = (val, bits = 32) => {
     if (val === null || val === undefined) return 'null/undef';
     if (isAdvancedInt64Object(val)) return val.toString(true);
-    if (typeof val !== 'number' || !isFinite(val)) return 'NaN/Invalid';
+    if (typeof val !== 'number' || !isFinite(val)) return String(val); // Retornar string original se não for número tratável
 
     let num = Number(val);
     let prefix = '0x';
     if (num < 0) {
         if (bits <= 32) {
-            num = (Math.pow(2, bits) + num) >>> 0; // Two's complement for negative
+            // Para números negativos de 32 bits, representação em complemento de dois
+            num = (Math.pow(2, bits) + num);
         } else {
-            // Para 64 bits, AdvancedInt64 lida com isso, mas aqui é um número JS
-            prefix = '-0x'; // Indicar negativo
+            // Para números maiores, AdvancedInt64 lida com isso.
+            // Aqui, para números JS, apenas indicamos que é negativo.
+            prefix = '-0x';
             num = -num;
         }
     }
 
+    // Assegura que num seja tratado como unsigned para a conversão hexadecimal, especialmente após complemento de dois.
+    if (bits <=32) num = num >>> 0;
+
+
     const pad = Math.ceil(bits / 4);
-    return prefix + num.toString(16).toUpperCase().padStart(pad, '0');
+    try {
+        return prefix + num.toString(16).toUpperCase().padStart(pad, '0');
+    } catch (e) {
+        return `ErrorInToHex(${String(val)})`;
+    }
 };
