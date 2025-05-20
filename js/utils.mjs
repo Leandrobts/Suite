@@ -34,7 +34,7 @@ export class AdvancedInt64 {
             buffer[1] = high;
         } else if (typeof low === 'string') {
             let hexstr = low;
-            if (hexstr.substring(0, 2).toLowerCase() === "0x") { hexstr = hexstr.substring(2); } // toLowerCase para 0X
+            if (hexstr.substring(0, 2).toLowerCase() === "0x") { hexstr = hexstr.substring(2); }
             if (hexstr.length % 2 === 1) { hexstr = '0' + hexstr; }
             if (hexstr.length > 16) { hexstr = hexstr.substring(hexstr.length - 16); }
             else { hexstr = hexstr.padStart(16, '0');}
@@ -103,24 +103,12 @@ export class AdvancedInt64 {
         if (typeof num !== 'number' || !Number.isFinite(num)) {
             throw new TypeError("AdvancedInt64.fromNumber espera um número finito.");
         }
-        // Handle negative numbers by converting to their 64-bit two's complement representation
         if (num < 0) {
-            // For negative numbers, it's easier to represent them by their absolute value,
-            // negate that, and then construct. Or handle via direct bit manipulation if necessary.
-            // This simplified fromNumber might not perfectly handle all negative JS numbers to 64-bit.
-            // A more robust way for negatives:
-            // if (num < 0) {
-            //    let absNum = Math.abs(num);
-            //    let high = Math.floor(absNum / Math.pow(2, 32));
-            //    let low = absNum % Math.pow(2, 32);
-            //    let temp = new AdvancedInt64(low, high);
-            //    return temp.neg();
-            // }
-            // However, direct calculation for negative numbers is tricky with JS bitwise ops for 64-bit.
-            // The current constructor handles negative numbers by their 32-bit parts correctly.
-            const high = Math.floor(num / (0x100000000)); // 2^32
-            const low = num % (0x100000000);
-            return new AdvancedInt64(low >>> 0, high >>> 0); // Ensure they are treated as unsigned in parts
+            const absNum = Math.abs(num);
+            const high = Math.floor(absNum / Math.pow(2, 32));
+            const low = absNum % Math.pow(2, 32);
+            let temp = new AdvancedInt64(low, high);
+            return temp.neg();
         }
 
         const high = Math.floor(num / Math.pow(2, 32));
@@ -146,7 +134,7 @@ export const readWriteUtils = {
     read32: (u8_view, offset) => readWriteUtils.readBytes(u8_view, offset, 4),
     read64: (u8_view, offset) => {
         if (offset + 8 > u8_view.byteLength) throw new RangeError("Read 64-bit out of bounds");
-        let resBytes = new Uint8Array(8); // Criar um novo array para os bytes
+        let resBytes = new Uint8Array(8);
         for (let i = 0; i < 8; i++) {
             resBytes[i] = u8_view[offset + i];
         }
@@ -177,40 +165,31 @@ export const generalUtils = {
     },
     str2array: (str, length, offset = 0) => {
         let a = new Array(length);
-        for (let i = 0; i < length && (i + offset < str.length); i++) { // Adicionado bound check
+        for (let i = 0; i < length && (i + offset < str.length); i++) {
             a[i] = str.charCodeAt(i + offset);
         }
         return a;
     }
 };
 
-// Removido: export const jscOffsets = { ... };
-// Os módulos que precisam de JSC_OFFSETS devem importá-los diretamente de config.mjs.
-
 export const PAUSE = (ms = 50) => new Promise(r => setTimeout(r, ms));
 
 export const toHex = (val, bits = 32) => {
     if (val === null || val === undefined) return 'null/undef';
     if (isAdvancedInt64Object(val)) return val.toString(true);
-    if (typeof val !== 'number' || !isFinite(val)) return String(val); // Retornar string original se não for número tratável
+    if (typeof val !== 'number' || !isFinite(val)) return String(val);
 
     let num = Number(val);
     let prefix = '0x';
     if (num < 0) {
         if (bits <= 32) {
-            // Para números negativos de 32 bits, representação em complemento de dois
             num = (Math.pow(2, bits) + num);
         } else {
-            // Para números maiores, AdvancedInt64 lida com isso.
-            // Aqui, para números JS, apenas indicamos que é negativo.
             prefix = '-0x';
             num = -num;
         }
     }
-
-    // Assegura que num seja tratado como unsigned para a conversão hexadecimal, especialmente após complemento de dois.
     if (bits <=32) num = num >>> 0;
-
 
     const pad = Math.ceil(bits / 4);
     try {
