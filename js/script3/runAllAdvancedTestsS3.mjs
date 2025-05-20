@@ -26,14 +26,7 @@ export async function runAllAdvancedTestsS3() {
 
     // --- Defina aqui as configurações de teste que você quer rodar ---
     const testsToRun = [
-        { // 1. Cenário original que causou o crash
-            iterationName: "OriginalCrashCase",
-            enablePrototypePollution: true,
-            enableOOBWrite: true,
-            corruption_offset: 0x70,
-            value_to_write: 0xFFFFFFFF,
-            bytes_to_write_for_corruption: 4,
-        },
+       
         { // 2. Apenas Poluição de Protótipo (PP), sem escrita OOB
             iterationName: "OnlyPP",
             enablePrototypePollution: true,
