@@ -1,141 +1,158 @@
+
 // js/config.mjs
 
-// Firmware: PS4 12.02
-// OFFSETS VALIDADOS/REFINADOS COM BASE NA ANÁLISE DE DISASSEMBLY (ArrayBuffer.txt, JSON.txt, m_type...)
+// Firmware: PS4 12.02 (inferido)
+// !! VOCÊ DEVE VALIDAR E REFINAR ESTES OFFSETS CUIDADOSAMENTE NO SEU DISASSEMBLER !!
 export const JSC_OFFSETS = {
     JSCell: {
-        // Estes são os offsets DENTRO de uma JSCell, que é o cabeçalho base para todos os objetos JS.
-        // O StructureID identifica o tipo e o layout do objeto.
-        // Se o StructureID está diretamente na célula:
-        STRUCTURE_ID_OFFSET: 0x00,       // Offset do StructureID (uint32_t) dentro da JSCell. (VALIDADO)
-        FLAGS_OFFSET: 0x04,            // Offset das Flags (uint32_t) dentro da JSCell. (VALIDADO)
-        // Se, em vez disso, a JSCell contém um ponteiro para uma estrutura Structure separada:
-        // STRUCTURE_POINTER_OFFSET: 0x8,   // Offset do ponteiro para a Structure (Structure*) dentro da JSCell. (Alternativa a ser validada)
-                                         // Por agora, vamos trabalhar com StructureID direto na célula.
+        // Análise de JSC::JSObject::put (download 33) sugere [rsi+8h] (rsi=JSCell*) é o Structure*.
+        // Se StructureID é um uint32_t antes disso, poderia ser 0x4.
+        // Se a célula começa com vtable (8 bytes), então Structure* pode ser 0x8.
+        // O mais comum é o StructureID (ou um ponteiro para Structure que contém o ID)
+        // estar bem no início da célula.
+        // VÁLIDE: Se [obj_ptr+0] ou [obj_ptr+4] é o StructureID numérico,
+        // ou se [obj_ptr+X] é o ponteiro para a Structure.
+        // Vamos assumir um ponteiro para Structure no offset 0x8 por enquanto,
+        // e o StructureID está dentro da Structure.
+        STRUCTURE_POINTER_OFFSET: 0x8, // CANDIDATO: Ponteiro para a estrutura Structure
+        // Se o ID estivesse direto na célula: STRUCTURE_ID_OFFSET: 0x0 (ou 0x4), FLAGS_OFFSET: 0x4 (ou 0x0)
+        // Vamos manter seu original por enquanto, mas o STRUCTURE_POINTER_OFFSET acima é uma forte hipótese.
+        STRUCTURE_ID_OFFSET: 0x00, // Seu valor original, VERIFIQUE se é ID direto ou se deve usar o ponteiro acima.
+        FLAGS_OFFSET: 0x04       // Seu valor original
     },
 
     Structure: {
-        // Offsets DENTRO do objeto JSC::Structure (se STRUCTURE_POINTER_OFFSET for usado).
-        // Estes precisam de validação profunda com seus binários. O construtor em m_type e m_structureID.txt ajuda.
-        // TYPE_INFO_TYPE_OFFSET: 0x0A, // Ex: [StructureBase + 0xA] poderia ser o tipo dentro da TypeInfo
-        // CLASS_INFO_OFFSET: 0x30,      // Ex: [StructureBase + 0x30] poderia ser ClassInfo*
-        // PROTOTYPE_OFFSET: 0x08,       // Ex: [StructureBase + 0x08] poderia ser o protótipo
+        // De download (36).txt (Construtor de Structure, rdi = this Structure*)
+        GLOBAL_OBJECT_OFFSET: 0x00,        // mov [rdi], r8 (r8 = JSGlobalObject*)
+        PROTOTYPE_OFFSET: 0x08,            // mov [rdi+8h], r9 (r9 = JSValue do protótipo)
+        TYPE_INFO_FLAGS_OFFSET: 0x10,      // mov [rdi+10h], eax (TypeInfo.m_flags e .m_type)
+                                           // Este campo provavelmente contém o StructureID real e flags de tipo.
+        INDEXING_TYPE_AND_MISC_OFFSET: 0x18, // mov [rdi+18h], r10d (indexingType)
+        CLASS_INFO_OFFSET: 0x1C,           // mov [rdi+1Ch], rcx (rcx = ClassInfo*)
+
+        // De download (33).txt (JSC::JSObject::put), se rdx é Structure*:
+        VIRTUAL_PUT_OFFSET: 0x18,          // call qword ptr [rdx+18h] (Pode ser um offset dentro de ClassInfo ou vtable inline)
+                                           // Nota: Este 0x18 é diferente do INDEXING_TYPE_AND_MISC_OFFSET acima. Contexto é chave.
     },
 
     JSObject: {
-        // Se JSCell tem 8 bytes (ID + Flags), o Butterfly (para propriedades/elementos) viria depois.
-        BUTTERFLY_OFFSET: 0x08, // CANDIDATO, se JSCell tem 8 bytes. Se JSCell tiver 16 (com vtable e Structure*), então 0x10. VALIDAR!
-                                // O seu core_exploit.mjs original usava jscOffsets.js_butterfly = 0x8;
+        // Precisa ser confirmado. Se JSCell tem 8 ou 16 bytes, e Structure* está ali,
+        // o Butterfly viria depois.
+        BUTTERFLY_OFFSET: 0x10, // CANDIDATO: (Se JSCell base + Structure* ocupam 0x10 bytes)
+                               // Seu config original tinha 0x08. Verifique!
     },
 
     ArrayBuffer: {
-        // Offsets relativos ao início do objeto JSArrayBuffer (que começa com uma JSCell).
-        // Validado com base em ArrayBuffer.txt.
+        // De download (37).txt (JSC::ArrayBuffer::create, rdi = this JSArrayBuffer*)
+        // Assumindo Structure* em JSC_OFFSETS.JSCell.STRUCTURE_POINTER_OFFSET (ex: 0x8)
+        CONTENTS_IMPL_POINTER_OFFSET: 0x10, // mov [rdi+10h], rbx (rbx = m_impl / ArrayBufferContents*)
+                                            // Este offset é relativo ao início do objeto JSArrayBuffer.
 
-        // Ponteiro para a estrutura interna ArrayBufferContents* (m_impl).
-        // [JSArrayBuffer_base + 0x10]
-        CONTENTS_IMPL_POINTER_OFFSET: 0x10,
+        // O tamanho está DENTRO da estrutura ArrayBufferContents (ou m_impl).
+        // Se m_impl está em CONTENTS_IMPL_POINTER_OFFSET (0x10),
+        // e o tamanho está no offset 0x08 DENTRO de m_impl (ArrayBufferContents),
+        // então o offset do tamanho, relativo ao JSArrayBuffer, é 0x10 + 0x08 = 0x18.
+        SIZE_IN_BYTES_OFFSET_FROM_JSARRAYBUFFER_START: 0x18, // Consistente com sua análise anterior.
 
-        // Offset do *tamanho* (byteLength) do buffer, relativo ao início do JSArrayBuffer.
-        // Análise de JSObjectGetArrayBufferByteLength: m_impl = JSArrayBufferBase[0x10]; size = m_impl[0x20].
-        // Portanto, size = JSArrayBufferBase[0x10 + 0x20] = JSArrayBufferBase[0x30]
-        SIZE_IN_BYTES_OFFSET_FROM_JSARRAYBUFFER_START: 0x30,
-
-        // Offset do *ponteiro para os dados brutos* (dataPointer), relativo ao início do JSArrayBuffer.
-        // Análise de JSObjectGetArrayBufferBytesPtr: m_impl = JSArrayBufferBase[0x10]; dataPtr = m_impl[0x10].
-        // Portanto, dataPtr = JSArrayBufferBase[0x10 + 0x10] = JSArrayBufferBase[0x20]
-        DATA_POINTER_OFFSET_FROM_JSARRAYBUFFER_START: 0x20,
-
-        // Offsets DENTRO de ArrayBufferContents (se você tiver um ponteiro para ArrayBufferContents):
-        // ArrayBufferContents_DataPtrOffset: 0x10,
-        // ArrayBufferContents_SizeOffset: 0x20,
+        // Seu config original (especulativos, precisam ser verificados se relevantes)
+        SHARING_MODE_OFFSET: 0x28,
+        IS_RESIZABLE_FLAGS_OFFSET: 0x30
     },
 
-    ArrayBufferView: { // Como DataView, Uint8Array, etc. (Objeto que "vê" um ArrayBuffer)
-                       // Herda de JSCell.
-        STRUCTURE_ID_OFFSET: 0x00,           // No início da JSCell da View
-        FLAGS_OFFSET: 0x04,                  // No início da JSCell da View
-        // Após o cabeçalho JSCell (ex: 8 bytes), vêm os campos específicos da View:
-        ASSOCIATED_ARRAYBUFFER_OFFSET: 0x08, // Ponteiro para o JSArrayBuffer associado.
-        M_VECTOR_OFFSET: 0x10,               // Ponteiro para os dados (geralmente o dataPointer do ArrayBuffer associado + byteOffset da view).
-        M_LENGTH_OFFSET: 0x18,               // Comprimento da view (em elementos para TypedArrays, em bytes para DataView).
-        M_MODE_OFFSET: 0x1C                  // Modo (ex: WastefulWriting, Aliased).
+    ArrayBufferView: { // Como DataView, Uint32Array
+        // Se herda de JSCell, considerar os offsets de JSCell primeiro.
+        // Estes são relativos ao início do objeto JSArrayBufferView.
+        STRUCTURE_ID_OFFSET: 0x00,           // Seu original.
+        FLAGS_OFFSET: 0x04,                  // Seu original.
+        ASSOCIATED_ARRAYBUFFER_OFFSET: 0x08, // Ponteiro para o JSArrayBuffer.
+        M_VECTOR_OFFSET: 0x10,               // Ponteiro para os dados (dentro do ArrayBuffer.m_impl->data()).
+        M_LENGTH_OFFSET: 0x18,               // Comprimento da view.
+        M_MODE_OFFSET: 0x1C                  // Modo (ex: WastefulWriting).
     },
 
     JSFunction: {
-        // Herda de JSCell.
-        M_EXECUTABLE_OFFSET: "0x20", // VALIDAR
-        M_SCOPE_OFFSET: "0x28",      // VALIDAR
+        // Se herda de JSCell...
+        M_EXECUTABLE_OFFSET: "0x20", // Seu original (Ponteiro para FunctionExecutable).
+        M_SCOPE_OFFSET: "0x28",      // Seu original (Ponteiro para JSScope).
     },
 
     SymbolObject: {
-        // Herda de JSCell.
-        PRIVATE_SYMBOL_POINTER_OFFSET: 0x10, // VALIDAR
+        // Se herda de JSCell...
+        PRIVATE_SYMBOL_POINTER_OFFSET: 0x10, // De download (31).txt (Ponteiro para JSC::Symbol*).
     }
 };
 
-// !! PREENCHA ESTES COM VALORES HEXADECIMAIS REAIS DOS SEUS BINÁRIOS !!
-// Obtenha-os analisando o código de criação de objetos ou tabelas de Structure.
+// VALORES NUMÉRICOS REAIS (HEX) PRECISAM SER EXTRAÍDOS DA SUA ANÁLISE!
 export const KNOWN_STRUCTURE_IDS = {
-    // Estes são exemplos, os valores reais são necessários.
-    TYPE_ARRAY_BUFFER: "0xYOUR_ACTUAL_ARRAYBUFFER_ID",  // Ex: "0x07000100" (valor hipotético)
-    TYPE_UINT8_ARRAY:  "0xYOUR_ACTUAL_UINT8ARRAY_ID", // Para TypedArrays
-    TYPE_DATAVIEW:     "0xYOUR_ACTUAL_DATAVIEW_ID",
-    TYPE_JS_FUNCTION:  "0xYOUR_ACTUAL_JSFUNCTION_ID",
-    TYPE_JS_OBJECT_GENERIC: "0xYOUR_ACTUAL_JSOBJECT_ID", // Objeto comum {}
-    TYPE_JS_STRING:    "0xYOUR_ACTUAL_JSSTRING_ID",
-    // Adicione outros que você encontrar e achar úteis para type confusion:
-    TYPE_JS_ARRAY:     "0xYOUR_ACTUAL_JSARRAY_ID",
-    TYPE_FINAL_OBJECT: "0xYOUR_ACTUAL_FINALOBJECT_ID", // Um tipo de objeto simples sem propriedades indexadas
-                                                       // (pode ser o mesmo que JS_OBJECT_GENERIC inicialmente)
-    TYPE_FAKE_TARGET_FOR_CONFUSION: "0xYOUR_ACTUAL_TARGET_ID", // Um tipo que tem vtable ou ponteiros de função em offsets conhecidos
+    TYPE_ARRAY_BUFFER: "0xFILL_ME_IN_ARRAYBUFFER_ID",
+    TYPE_JS_FUNCTION: "0xFILL_ME_IN_JSFUNCTION_ID",
+    TYPE_JS_OBJECT_GENERIC: "0xFILL_ME_IN_JSOBJECT_ID",
+    TYPE_FAKE_TARGET_FOR_CONFUSION: "0xFILL_ME_IN_INTERESTING_TYPE_ID", // Ex: Um tipo com vtable ou ponteiros de função.
+    TYPE_DATAVIEW: "0xFILL_ME_IN_DATAVIEW_ID",
+    // Adicione outros StructureIDs que você identificar.
 };
 
-// Estes são do seu dump anterior, valide-os para PS4 12.02 se for usá-los.
+// Endereços de GOT e funções (OFFSETS RELATIVOS AO BASE DO MÓDULO)
 export const WEBKIT_LIBRARY_INFO = {
-    MODULE_NAME: "libSceNKWebkit.sprx",
-    KNOWN_OFFSETS: {},
-    GOT_ENTRIES: { "mprotect": "0x3CBD820" },
-    FUNCTION_OFFSETS: {
-        "JSC::JSFunction::create": "0x58A1D0",
-        "JSC::Structure::Structure_constructor": "0x1638A50",
-        "WTF::fastMalloc": "0x1271810",
-        "WTF::fastFree": "0x230C7D0",
-        "gadget_lea_rax_rdi_plus_20_ret": "0x58B860",
-        // ... (mantenha outros offsets que você já validou)
+    MODULE_NAME: "libSceNKWebkit.sprx", // Ou o nome do módulo principal que contém JSC e WebCore
+    // BASE_ADDRESS: "0x0", // VOCÊ PRECISARÁ DE UM INFO LEAK PARA OBTER ISSO EM TEMPO DE EXECUÇÃO
+    KNOWN_OFFSETS: {
+        // VTable_Possible_Offsets: [...] // Se você tiver offsets para vtables específicas
+    },
+    GOT_ENTRIES: {
+         "mprotect": "0x3CBD820", // Do seu download (38).txt. Relativo ao base do módulo da GOT (SCE_RELRO?)
+         // Adicione outros (free, memcpy, system, etc.)
+    },
+    FUNCTION_OFFSETS: { // Offsets relativos ao base do módulo principal (libSceNKWebkit.sprx)
+        "JSC::JSFunction::create": "0x58A1D0",                 // download (4), (26), (28)
+        "JSC::InternalFunction::createSubclassStructure": "0xA86580", // download (5), (6)
+        "WTF::StringImpl::destroy": "0x10AA800",               // download (7), (10)
+        "bmalloc::Scavenger::schedule": "0x2EBDB0",             // download (7)
+        "WebCore::JSLocation::createPrototype": "0xD2E30",       // download (34)
+        "WebCore::cacheDOMStructure": "0x740F30",              // download (11), (21), (20)
+        "mprotect_plt_stub": "0x1A08",                         // download (22) (PLT stub, jmps para GOT)
+        "JSC::JSWithScope::create": "0x9D6990",                // download (23)
+        "JSC::JSObject::putByIndex": "0x1EB3B00",             // download (24)
+        "JSC::JSInternalPromise::create": "0x112BB00",        // download (25)
+        "JSC::JSInternalPromise::then": "0x1BC2D70",          // download (16)
+        "JSC::loadAndEvaluateModule": "0xFC2900",              // download (27)
+        "JSC::ArrayBuffer::create_from_arraybuffer_ref": "0x170A490", // download (29), (30) (create(ArrayBuffer&))
+        "JSC::ArrayBuffer::create_from_contents": "0x10E5320", // download (37) (create(ArrayBufferContents&&))
+        "JSC::SymbolObject::finishCreation": "0x102C8F0",       // download (31)
+        "JSC::StructureCache::emptyStructureForPrototypeFromBaseStructure": "0xCCF870", // download (32)
+        "JSC::JSObject::put": "0xBD68B0",                     // download (33)
+        "JSC::Structure::Structure_constructor": "0x1638A50",    // download (36)
+        "WTF::fastMalloc": "0x1271810",                        // download (10) - verifique se é o mais comum
+        "WTF::fastFree": "0x230C7D0",                          // download (14) - verifique se é o mais comum
+        "JSValueIsSymbol": "0x126D940",                         // download (17)
+        "JSC::JSArray::getOwnPropertySlot": "0x2322630",       // download (18)
+        "JSC::JSGlobalObject::visitChildren_JSCell": "0x1A5F740", // download (19)
+        "JSC::JSCallee::JSCallee_constructor": "0x2038D50",      // download (20)
+
+        // Gadgets ROP/JOP que você encontrar:
+        "gadget_lea_rax_rdi_plus_20_ret": "0x58B860",         // download (3)
+        // Adicione mais gadgets aqui
     }
 };
 
-// Configuração para a primitiva OOB, pode ser ajustada pela UI
-export let OOB_CONFIG = {
-    ALLOCATION_SIZE: 32768,
-    BASE_OFFSET_IN_DV: 128,
-    INITIAL_BUFFER_SIZE: 32 // Não usado diretamente por core_exploit.mjs atual, mas presente no config original
-};
+export let OOB_CONFIG = {ALLOCATION_SIZE: 32768, BASE_OFFSET_IN_DV: 128, INITIAL_BUFFER_SIZE: 32};
 
 export function updateOOBConfigFromUI(docInstance) {
-    if (!docInstance || typeof docInstance.getElementById !== 'function') {
-        // console.warn("updateOOBConfigFromUI: docInstance inválido ou getElementById não é função.");
-        return;
-    }
-    try {
-        const oobAllocSizeEl = docInstance.getElementById('oobAllocSize');
-        const baseOffsetEl = docInstance.getElementById('baseOffset');
-        // const initialBufSizeEl = docInstance.getElementById('initialBufSize'); // Removido se não usado
+    if (!docInstance) return;
+    const oobAllocSizeEl = docInstance.getElementById('oobAllocSize');
+    const baseOffsetEl = docInstance.getElementById('baseOffset');
+    const initialBufSizeEl = docInstance.getElementById('initialBufSize');
 
-        if (oobAllocSizeEl && oobAllocSizeEl.value !== undefined) {
-            const val = parseInt(oobAllocSizeEl.value, 10);
-            if (!isNaN(val) && val > 0) OOB_CONFIG.ALLOCATION_SIZE = val;
-        }
-        if (baseOffsetEl && baseOffsetEl.value !== undefined) {
-            const val = parseInt(baseOffsetEl.value, 10);
-            if (!isNaN(val) && val >= 0) OOB_CONFIG.BASE_OFFSET_IN_DV = val;
-        }
-        // if (initialBufSizeEl && initialBufSizeEl.value !== undefined) {
-        //     const val = parseInt(initialBufSizeEl.value, 10);
-        //     if (!isNaN(val) && val > 0) OOB_CONFIG.INITIAL_BUFFER_SIZE = val;
-        // }
-    } catch (e) {
-        console.warn("Erro ao atualizar OOB_CONFIG da UI:", e.message);
+    if (oobAllocSizeEl && oobAllocSizeEl.value !== undefined) {
+        const val = parseInt(oobAllocSizeEl.value, 10);
+        if (!isNaN(val) && val > 0) OOB_CONFIG.ALLOCATION_SIZE = val;
+    }
+    if (baseOffsetEl && baseOffsetEl.value !== undefined) {
+        const val = parseInt(baseOffsetEl.value, 10);
+        if (!isNaN(val) && val >= 0) OOB_CONFIG.BASE_OFFSET_IN_DV = val;
+    }
+    if (initialBufSizeEl && initialBufSizeEl.value !== undefined) {
+        const val = parseInt(initialBufSizeEl.value, 10);
+        if (!isNaN(val) && val > 0) OOB_CONFIG.INITIAL_BUFFER_SIZE = val;
     }
 }
