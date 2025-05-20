@@ -27,12 +27,6 @@ export async function runAllAdvancedTestsS3() {
     // --- Defina aqui as configurações de teste que você quer rodar ---
     const testsToRun = [
         
-        { // 2. Apenas Poluição de Protótipo (PP), sem escrita OOB
-            iterationName: "OnlyPP",
-            enablePrototypePollution: true,
-            enableOOBWrite: false, // OOB desabilitado
-            // corruption_offset e value_to_write não serão usados
-        },
         { // 3. Apenas escrita OOB (no offset problemático), sem PP
             iterationName: "OnlyOOB_0x70_FFFFFFFF",
             enablePrototypePollution: false, // PP desabilitada
