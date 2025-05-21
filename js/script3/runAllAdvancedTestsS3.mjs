@@ -1,68 +1,26 @@
-// js/script3/runAllAdvancedTestsS3.mjs
-import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3 } from './s3_utils.mjs';
-import { getOutputAdvancedS3, getRunBtnAdvancedS3 } from '../dom_elements.mjs';
-import { runJsonTCDetailedAccessTest } from './testJsonTypeConfusionUAFSpeculative.mjs'; // Nova importação
+// Em runAllAdvancedTestsS3.mjs
+async function runFocusedTest_ToRecreateFreeze() {
+    const FNAME_RUNNER = "runFocusedTest_ToRecreateFreeze";
+    logS3(`==== INICIANDO TESTE DIRECIONADO (Recriar Congelamento Original com 0x70 e 0xFFFFFFFF) ====`, 'test', FNAME_RUNNER);
 
-async function runFocusedTest_RecreateFreeze_DetailedAccess() {
-    const FNAME_RUNNER = "runFocusedTest_RecreateFreeze_DetailedAccess";
-    logS3(`==== INICIANDO TESTE DIRECIONADO (Recriar Congelamento com Acesso Detalhado em toJSON) ====`, 'test', FNAME_RUNNER);
-
-    const criticalOffset = 0x70;
-    const criticalValue = 0xFFFFFFFF;
-    const enablePP = true;
-    const attemptOOBWrite = true;
-
-    // Cenário 1: victim_ab é ArrayBuffer (como nos testes originais do congelamento)
-    logS3(`\n--- Testando com victim_ab: ArrayBuffer ---`, 'subtest', FNAME_RUNNER);
-    await runJsonTCDetailedAccessTest(
-        "FreezeAttempt_VictimArrayBuffer_0x70_FFFF",
-        criticalOffset,
-        criticalValue,
-        enablePP,
-        attemptOOBWrite,
-        () => new ArrayBuffer(64) // victimFactory para ArrayBuffer
+    await runSpecificJsonTypeConfusionTest(
+        "AttemptRecreateFreeze_0x70_FFFF_PP_SimpleToJSON_MinLog",
+        0x70,       // corruptionOffset
+        0xFFFFFFFF, // valueToWrite
+        true,       // enablePP
+        true,       // attemptOOBWrite
+        false       // skipOOBEnvironmentSetup
     );
-    await PAUSE_S3(MEDIUM_PAUSE_S3);
-
-    // Cenário 2: victim_ab é um Objeto Simples
-    logS3(`\n--- Testando com victim_ab: Objeto Simples ---`, 'subtest', FNAME_RUNNER);
-    await runJsonTCDetailedAccessTest(
-        "FreezeAttempt_VictimSimpleObject_0x70_FFFF",
-        criticalOffset,
-        criticalValue,
-        enablePP,
-        attemptOOBWrite,
-        () => ({ p1: "a", p2: "b", p3: 123 }) // victimFactory para Objeto
-    );
-    await PAUSE_S3(MEDIUM_PAUSE_S3);
-
-    // Cenário 3: victim_ab é um Array Simples
-    logS3(`\n--- Testando com victim_ab: Array Simples ---`, 'subtest', FNAME_RUNNER);
-    await runJsonTCDetailedAccessTest(
-        "FreezeAttempt_VictimSimpleArray_0x70_FFFF",
-        criticalOffset,
-        criticalValue,
-        enablePP,
-        attemptOOBWrite,
-        () => [10, 20, 30, 40, 50] // victimFactory para Array
-    );
-    await PAUSE_S3(MEDIUM_PAUSE_S3);
-
-    logS3(`==== TESTE DIRECIONADO (Recriar Congelamento com Acesso Detalhado em toJSON) CONCLUÍDO ====`, 'test', FNAME_RUNNER);
+    logS3(`==== TESTE DIRECIONADO (Recriar Congelamento Original) CONCLUÍDO ====`, 'test', FNAME_RUNNER);
 }
 
 export async function runAllAdvancedTestsS3() {
-    const FNAME = 'runAllAdvancedTestsS3_DetailedAccessFreezeAttempt';
-    const runBtn = getRunBtnAdvancedS3();
-    const outputDiv = getOutputAdvancedS3();
-
+    const FNAME = 'runAllAdvancedTestsS3_RecreateFreeze';
+    // ... (setup do botão e outputDiv) ...
     if (runBtn) runBtn.disabled = true;
     if (outputDiv) outputDiv.innerHTML = '';
-
-    logS3(`==== INICIANDO Script 3: Tentativa de Recriar Congelamento com Acesso Detalhado em toJSON ====`,'test', FNAME);
-    
-    await runFocusedTest_RecreateFreeze_DetailedAccess();
-    
-    logS3(`\n==== Script 3 CONCLUÍDO (Tentativa de Recriar Congelamento com Acesso Detalhado em toJSON) ====`,'test', FNAME);
+    logS3(`==== INICIANDO Script 3: Tentativa de Recriar Congelamento Original ====`,'test', FNAME);
+    await runFocusedTest_ToRecreateFreeze();
+    logS3(`\n==== Script 3 CONCLUÍDO (Tentativa de Recriar Congelamento Original) ====`,'test', FNAME);
     if (runBtn) runBtn.disabled = false;
 }
