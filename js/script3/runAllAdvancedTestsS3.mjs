@@ -10,16 +10,7 @@ async function runTargetedJsonTCTests_WithRecursionControl() {
     const FNAME_TARGETED_RUNNER = "runTargetedJsonTCTests_WithRecursionControl";
     logS3(`==== INICIANDO TESTES DIRECIONADOS JSON TC COM CONTROLE DE RECURSÃO (S3) ====`, 'test', FNAME_TARGETED_RUNNER);
 
-    // Cenário 1: Tentativa de replicar o crash original (OOB write + PP)
-    // A função toJSON agora tem a lógica de modificar o retorno em profundidade crítica
-    await runSpecificJsonTypeConfusionTest(
-        "ReplicarCrashOriginal_0x70_FFFF_PP_OOB_RecursionMod",
-        0x70,       // corruptionOffset
-        0xFFFFFFFF, // valueToWrite
-        true,       // enablePP
-        true,       // attemptOOBWrite
-        false       // skipOOBEnvironmentSetup
-    );
+    /
     await PAUSE_S3(MEDIUM_PAUSE_S3);
 
     // Cenário 2: Sem escrita OOB, mas com PP e controle de recursão no toJSON
