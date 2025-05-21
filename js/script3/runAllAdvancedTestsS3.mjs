@@ -11,18 +11,6 @@ async function runTargetedJsonTC_With_SimpleToJSON() {
     const FNAME_RUNNER = "runTargetedJsonTC_With_SimpleToJSON";
     logS3(`==== INICIANDO TESTES DIRECIONADOS JSON TC (toJSON com lógica SIMPLES) ====`, 'test', FNAME_RUNNER);
 
-    
-    
-    // Cenário 3: OOB Write com VALOR NULO (0x0) em 0x70, PP com toJSON simples.
-    await runSpecificJsonTypeConfusionTest(
-        "OOB_0x70_NULL_PP_toJSON_SimpleLogic",
-        0x70,       // corruptionOffset
-        0x0,        // valueToWrite
-        true,       // enablePP
-        true,       // attemptOOBWrite
-        false       // skipOOBEnvironmentSetup
-    );
-    await PAUSE_S3(MEDIUM_PAUSE_S3);
 
     // Cenário 4: OOB Write com VALOR PADRÃO (0x41414141) em 0x70, PP com toJSON simples.
     await runSpecificJsonTypeConfusionTest(
