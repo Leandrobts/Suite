@@ -14,17 +14,7 @@ async function runTargetedJsonTC_With_PrimitiveReturnAtDepth() {
     const FNAME_RUNNER = "runTargetedJsonTC_With_PrimitiveReturnAtDepth";
     logS3(`==== INICIANDO TESTES DIRECIONADOS JSON TC (toJSON retorna PRIMITIVO em profundidade) ====`, 'test', FNAME_RUNNER);
 
-    // Cenário 1: Tentativa de replicar o crash original (OOB write + PP),
-    // mas toJSON agora retorna uma string primitiva na profundidade 2900.
-    await runSpecificJsonTypeConfusionTest(
-        "OOB_0x70_FFFF_PP_toJSON_ReturnsPrimitive",
-        0x70,       // corruptionOffset
-        0xFFFFFFFF, // valueToWrite
-        true,       // enablePP
-        true,       // attemptOOBWrite
-        false       // skipOOBEnvironmentSetup (configura ambiente OOB)
-    );
-    await PAUSE_S3(MEDIUM_PAUSE_S3);
+    
 
     // Cenário 2: Apenas PP (sem escrita OOB), toJSON retorna string primitiva na profundidade 2900.
     // Para verificar a estabilidade da própria lógica de recursão + retorno primitivo.
