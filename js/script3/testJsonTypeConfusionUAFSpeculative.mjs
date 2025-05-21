@@ -8,7 +8,7 @@ import {
 import { OOB_CONFIG, JSC_OFFSETS, KNOWN_STRUCTURE_IDS } from '../config.mjs';
 
 let callCount_toJSON_tc = 0; // Contador global para o toJSON deste módulo
-const DETAILED_LOG_CALL_COUNT_THRESHOLD = 100; // Log detalhado para as primeiras N chamadas
+const DETAILED_LOG_CALL_COUNT_THRESHOLD = 5; // Log detalhado para as primeiras N chamadas
 
 async function executeSingleJsonTCTest(
     description,
