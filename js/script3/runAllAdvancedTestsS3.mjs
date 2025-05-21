@@ -17,24 +17,13 @@ async function runFocusedTests_DetectEarlyCorruption() {
         "Focus_OOB_0x70_FFFF_PP_SimpleToJSON_DetailLog",
         0x70,       // corruptionOffset
         0xFFFFFFFF, // valueToWrite
-        true,       // enablePP
+        false,       // enablePP
         true,       // attemptOOBWrite
         false       // skipOOBEnvironmentSetup (configura ambiente OOB)
     );
     await PAUSE_S3(MEDIUM_PAUSE_S3);
     
-    // Cenário 3 (da rodada anterior): OOB Write com VALOR NULO (0x0) em 0x70, PP com toJSON simples e logging detalhado.
-    await runSpecificJsonTypeConfusionTest(
-        "Focus_OOB_0x70_NULL_PP_SimpleToJSON_DetailLog",
-        0x70,       // corruptionOffset
-        0x0,        // valueToWrite
-        true,       // enablePP
-        true,       // attemptOOBWrite
-        false       // skipOOBEnvironmentSetup
-    );
-    await PAUSE_S3(MEDIUM_PAUSE_S3);
-
-    // OPCIONAL: Cenário de controle - Apenas PP (sem escrita OOB), com toJSON simples.
+      // OPCIONAL: Cenário de controle - Apenas PP (sem escrita OOB), com toJSON simples.
     // Este cenário provavelmente causará o RangeError (estouro de pilha) ou lentidão extrema.
     // logS3("Próximo teste de CONTROLE: APENAS PP com toJSON simples. ESPERADO: RangeError ou lentidão.", "warn", FNAME_RUNNER);
     // await runSpecificJsonTypeConfusionTest(
