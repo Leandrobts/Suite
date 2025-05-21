@@ -17,7 +17,7 @@ async function runFocusedTests_DetectEarlyCorruption() {
         "Focus_OOB_0x70_FFFF_PP_SimpleToJSON_DetailLog",
         0x70,       // corruptionOffset
         0xFFFFFFFF, // valueToWrite
-        false,       // enablePP
+        true,       // enablePP
         true,       // attemptOOBWrite
         false       // skipOOBEnvironmentSetup (configura ambiente OOB)
     );
