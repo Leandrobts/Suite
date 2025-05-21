@@ -16,13 +16,6 @@ export async function runAllAdvancedTestsS3() {
     logS3(`==== INICIANDO Script 3: Teste - Influência da PP na Escrita OOB Congelante ====`,'test', FNAME);
     document.title = "Iniciando Script 3 - Teste Influência PP";
 
-    // Cenário 1: Com Prototype Pollution ANTES da escrita OOB (esperado congelar na escrita OOB)
-    logS3(`\n--- Cenário A: Escrita OOB em 0x70 COM Prototype Pollution ANTES ---`, 'subtest', FNAME);
-    await runSpecificFreezingTest_0x70_FFFF_ControlPP(
-        "OOB_0x70_FFFF_WITH_PP_Before_Write",
-        true // applyPrototypePollution = true
-    );
-    await PAUSE_S3(MEDIUM_PAUSE_S3);
 
     // Cenário 2: Sem Prototype Pollution ANTES da escrita OOB
     logS3(`\n--- Cenário B: Escrita OOB em 0x70 SEM Prototype Pollution ANTES ---`, 'subtest', FNAME);
