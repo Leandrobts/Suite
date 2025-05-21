@@ -11,42 +11,7 @@ async function runTargetedJsonTC_With_SimpleToJSON() {
     const FNAME_RUNNER = "runTargetedJsonTC_With_SimpleToJSON";
     logS3(`==== INICIANDO TESTES DIRECIONADOS JSON TC (toJSON com lógica SIMPLES) ====`, 'test', FNAME_RUNNER);
 
-    // Cenário 1: Tentar recriar o crash original (OOB write + PP),
-    // mas com a lógica toJSON simplificada (sem controle de profundidade para retorno primitivo).
-    // O objetivo é ver se o crash OOB acontece ANTES de um estouro de pilha.
-    await runSpecificJsonTypeConfusionTest(
-        "OOB_0x70_FFFF_PP_toJSON_SimpleLogic",
-        0x70,       // corruptionOffset
-        0xFFFFFFFF, // valueToWrite
-        true,       // enablePP
-        true,       // attemptOOBWrite
-        false       // skipOOBEnvironmentSetup (configura ambiente OOB)
-    );
-    await PAUSE_S3(MEDIUM_PAUSE_S3);
-
-    // Cenário 2: Apenas PP (sem escrita OOB), com toJSON usando lógica SIMPLES.
-    // Este cenário provavelmente causará o RangeError (estouro de pilha) se não for interrompido.
-    logS3("Próximo teste: APENAS PP com toJSON simples. ESPERADO: RangeError (Estouro de Pilha) ou lentidão extrema.", "warn", FNAME_RUNNER);
-    await runSpecificJsonTypeConfusionTest(
-        "OnlyPP_toJSON_SimpleLogic_NoOOBWrite",
-        -1,         // corruptionOffset (inválido -> sem escrita OOB efetiva)
-        0,          // valueToWrite (irrelevante)
-        true,       // enablePP
-        false,      // attemptOOBWrite (explicitamente desabilitado)
-        false       // skipOOBEnvironmentSetup (ambiente OOB é configurado, mas não usado para escrita)
-    );
-    await PAUSE_S3(MEDIUM_PAUSE_S3);
     
-    // Cenário 3: OOB Write com VALOR NULO (0x0) em 0x70, PP com toJSON simples.
-    await runSpecificJsonTypeConfusionTest(
-        "OOB_0x70_NULL_PP_toJSON_SimpleLogic",
-        0x70,       // corruptionOffset
-        0x0,        // valueToWrite
-        true,       // enablePP
-        true,       // attemptOOBWrite
-        false       // skipOOBEnvironmentSetup
-    );
-    await PAUSE_S3(MEDIUM_PAUSE_S3);
 
     // Cenário 4: OOB Write com VALOR PADRÃO (0x41414141) em 0x70, PP com toJSON simples.
     await runSpecificJsonTypeConfusionTest(
