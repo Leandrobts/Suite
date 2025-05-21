@@ -12,17 +12,7 @@ async function runFocusedTest_RecreateFreeze_DetailedAccess() {
     const enablePP = true;
     const attemptOOBWrite = true;
 
-    // Cenário 1: victim_ab é ArrayBuffer (como nos testes originais do congelamento)
-    logS3(`\n--- Testando com victim_ab: ArrayBuffer ---`, 'subtest', FNAME_RUNNER);
-    await runJsonTCDetailedAccessTest(
-        "FreezeAttempt_VictimArrayBuffer_0x70_FFFF",
-        criticalOffset,
-        criticalValue,
-        enablePP,
-        attemptOOBWrite,
-        () => new ArrayBuffer(64) // victimFactory para ArrayBuffer
-    );
-    await PAUSE_S3(MEDIUM_PAUSE_S3);
+
 
     // Cenário 2: victim_ab é um Objeto Simples
     logS3(`\n--- Testando com victim_ab: Objeto Simples ---`, 'subtest', FNAME_RUNNER);
