@@ -12,19 +12,7 @@ async function runFocusedTest_RecreateFreeze_DetailedAccess() {
     const enablePP = true;
     const attemptOOBWrite = true;
 
-
-
-    // Cenário 2: victim_ab é um Objeto Simples
-    logS3(`\n--- Testando com victim_ab: Objeto Simples ---`, 'subtest', FNAME_RUNNER);
-    await runJsonTCDetailedAccessTest(
-        "FreezeAttempt_VictimSimpleObject_0x70_FFFF",
-        criticalOffset,
-        criticalValue,
-        enablePP,
-        attemptOOBWrite,
-        () => ({ p1: "a", p2: "b", p3: 123 }) // victimFactory para Objeto
-    );
-    await PAUSE_S3(MEDIUM_PAUSE_S3);
+   
 
     // Cenário 3: victim_ab é um Array Simples
     logS3(`\n--- Testando com victim_ab: Array Simples ---`, 'subtest', FNAME_RUNNER);
