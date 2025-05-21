@@ -12,19 +12,6 @@ async function runTargetedJsonTC_With_SimpleToJSON() {
     logS3(`==== INICIANDO TESTES DIRECIONADOS JSON TC (toJSON com lógica SIMPLES) ====`, 'test', FNAME_RUNNER);
 
     
-
-    // Cenário 2: Apenas PP (sem escrita OOB), com toJSON usando lógica SIMPLES.
-    // Este cenário provavelmente causará o RangeError (estouro de pilha) se não for interrompido.
-    logS3("Próximo teste: APENAS PP com toJSON simples. ESPERADO: RangeError (Estouro de Pilha) ou lentidão extrema.", "warn", FNAME_RUNNER);
-    await runSpecificJsonTypeConfusionTest(
-        "OnlyPP_toJSON_SimpleLogic_NoOOBWrite",
-        -1,         // corruptionOffset (inválido -> sem escrita OOB efetiva)
-        0,          // valueToWrite (irrelevante)
-        true,       // enablePP
-        false,      // attemptOOBWrite (explicitamente desabilitado)
-        false       // skipOOBEnvironmentSetup (ambiente OOB é configurado, mas não usado para escrita)
-    );
-    await PAUSE_S3(MEDIUM_PAUSE_S3);
     
     // Cenário 3: OOB Write com VALOR NULO (0x0) em 0x70, PP com toJSON simples.
     await runSpecificJsonTypeConfusionTest(
