@@ -5,12 +5,13 @@ import { getOutputAdvancedS3, getRunBtnAdvancedS3 } from '../dom_elements.mjs';
 // Certifique-se que esta é a importação correta para a função modificada
 import { testJsonTypeConfusionUAFSpeculative } from './testJsonTypeConfusionUAFSpeculative.mjs'; 
 // Comente outros para focar
-// import { testWebAssemblyInterface } from './testWebAssemblyInterface.mjs';
-// import { testSharedArrayBufferSupport } from './testSharedArrayBufferSupport.mjs';
-// import { explainMemoryPrimitives } from './explainMemoryPrimitives.mjs';
-// import { testCoreExploitModule } from '../core_exploit.mjs'; 
-// import { testCorruptArrayBufferStructure } from './testCorruptArrayBufferStructure.mjs';
-
+/*
+import { testWebAssemblyInterface } from './testWebAssemblyInterface.mjs';
+import { testSharedArrayBufferSupport } from './testSharedArrayBufferSupport.mjs';
+import { explainMemoryPrimitives } from './explainMemoryPrimitives.mjs';
+import { testCoreExploitModule } from '../core_exploit.mjs'; 
+import { testCorruptArrayBufferStructure } from './testCorruptArrayBufferStructure.mjs';
+*/
 
 export async function runAllAdvancedTestsS3() { 
     const FNAME = 'runAllAdvancedTestsS3_FocusOriginalCrashScenario';
@@ -20,7 +21,7 @@ export async function runAllAdvancedTestsS3() {
     if (runBtn) runBtn.disabled = true;
     if (outputDiv) outputDiv.innerHTML = '';
 
-    logS3("==== INICIANDO Script 3: Foco no Cenário de Crash Original com Stringify ====", 'test', FNAME);
+    logS3("==== INICIANDO Script 3: Foco no Cenário de Crash Original com Stringify ====",'test', FNAME);
     document.title = "Iniciando Script 3 - Foco Crash Stringify";
 
     /* Comente outros testes para focar
@@ -42,6 +43,6 @@ export async function runAllAdvancedTestsS3() {
     await PAUSE_S3(MEDIUM_PAUSE_S3);
     */
 
-    logS3("\n==== Script 3 CONCLUÍDO (Foco no Cenário de Crash Original com Stringify) ====", 'test', FNAME);
+    logS3("\n==== Script 3 CONCLUÍDO (Foco no Cenário de Crash Original com Stringify) ====",'test', FNAME);
     if (runBtn) runBtn.disabled = false;
 }
