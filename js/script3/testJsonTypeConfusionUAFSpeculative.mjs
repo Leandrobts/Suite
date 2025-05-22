@@ -46,7 +46,7 @@ export async function testJsonTypeConfusionUAFSpeculative() {
             if (corruption_offset === ((OOB_CONFIG.BASE_OFFSET_IN_DV || 128) - 16) && value_to_write === 0xFFFFFFFF) {
                 logS3("!!! ATINGIDA COMBINAÇÃO CRÍTICA DE CONGELAMENTO (offset 0x70, valor 0xFFFFFFFF) !!!", "critical", FNAME);
                 document.title = "CRITICAL COMBO - DEBUG NOW";
-                // debugger; // Descomente esta linha para pausar o depurador automaticamente aqui
+                debugger; // Descomente esta linha para pausar o depurador automaticamente aqui
             }
             // ***********************************************
 
