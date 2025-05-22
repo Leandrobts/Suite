@@ -122,6 +122,19 @@ export async function testJsonTypeConfusionUAFSpeculative() {
                 await PAUSE_S3(MEDIUM_PAUSE_S3); 
                 stepReached = "antes_stringify";
                 document.title = `Stringify? - ${toHex(corruption_offset)}/${toHex(value_to_write)}`;
+try {
+    logS3("Tentando JSON.stringify de um objeto simples ANTES do victim_ab...", "warn", FNAME);
+    document.title = "Stringify Simples Teste...";
+    let simpleObj = { test: "ok" };
+    let simpleResult = JSON.stringify(simpleObj);
+    logS3(`JSON.stringify(simpleObj) retornou: ${simpleResult}`, "good", FNAME);
+    document.title = "Stringify Simples OK";
+} catch (e_simple) {
+    logS3(`ERRO no JSON.stringify(simpleObj): ${e_simple.message}`, "error", FNAME);
+    document.title = "ERRO Stringify Simples";
+}
+await PAUSE_S3(SHORT_PAUSE_S3); // Pausa para observar o título
+                
                 logS3(`Chamando JSON.stringify(victim_ab)...`, "info", FNAME);
                 let stringifyResult = null;
                 try {
