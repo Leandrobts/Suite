@@ -8,12 +8,12 @@ import { OOB_CONFIG } from '../config.mjs';
 import { toHex } from '../utils.mjs';
 
 
-async function runUAFTC_With_ToJSON_DepthControlAndSlice() {
-    const FNAME_RUNNER = "runUAFTC_With_ToJSON_DepthControlAndSlice";
-    logS3(`==== INICIANDO Teste UAF/TC com toJSON Detalhada, Controle de Profundidade e Teste Slice ====`, 'test', FNAME_RUNNER);
+async function runUAFTC_With_ToJSON_DepthControlAndSlice_VariableDepth() { // Nome um pouco mais genérico
+    const FNAME_RUNNER = "runUAFTC_With_ToJSON_VariableDepth"; // Nome atualizado
+    logS3(`==== INICIANDO Teste UAF/TC com toJSON Detalhada e Profundidade Variável ====`, 'test', FNAME_RUNNER);
 
     const criticalValue = 0xFFFFFFFF; 
-    const testDescription = `UAFTC_DepthCtrlSlice_Val_FFFF_Offset0x70`;
+    const testDescription = `UAFTC_VariableDepth_Val_FFFF_Offset0x70`; // Descrição atualizada
 
     logS3(`\n--- Executando Teste UAF/TC: ${testDescription} ---`, 'subtest', FNAME_RUNNER);
     
@@ -25,7 +25,7 @@ async function runUAFTC_With_ToJSON_DepthControlAndSlice() {
     if (result.potentiallyFroze) {
         logS3(`   RESULTADO ${testDescription}: CONGELAMENTO POTENCIAL. Chamadas toJSON: ${result.calls}`, "error", FNAME_RUNNER);
     } else if (result.errorOccurred) {
-        logS3(`   RESULTADO ${testDescription}: ERRO JS CAPTURADO. Chamadas toJSON: ${result.calls}`, "warn", FNAME_RUNNER);
+        logS3(`   RESULTADO ${testDescription}: ERRO JS CAPTURADO: ${result.errorOccurred.name} - ${result.errorOccurred.message}. Chamadas toJSON: ${result.calls}`, "warn", FNAME_RUNNER);
     } else {
         logS3(`   RESULTADO ${testDescription}: Completou. Chamadas toJSON: ${result.calls}`, "good", FNAME_RUNNER);
         logS3(`      Stringify Result: ${String(result.stringifyResult).substring(0,200)}`, "info", FNAME_RUNNER);
@@ -33,22 +33,22 @@ async function runUAFTC_With_ToJSON_DepthControlAndSlice() {
     await PAUSE_S3(MEDIUM_PAUSE_S3);
     logS3(`   Título da página após teste ${testDescription}: ${document.title}`, "info");
 
-    logS3(`==== Teste UAF/TC com toJSON Detalhada, Controle de Profundidade e Teste Slice CONCLUÍDO ====`, 'test', FNAME_RUNNER);
+    logS3(`==== Teste UAF/TC com toJSON Detalhada e Profundidade Variável CONCLUÍDO ====`, 'test', FNAME_RUNNER);
 }
 
 export async function runAllAdvancedTestsS3() {
-    const FNAME = 'runAllAdvancedTestsS3_UAFTC_DepthCtrlSlice'; 
+    const FNAME = 'runAllAdvancedTestsS3_UAFTC_VariableDepth'; // Nome atualizado
     const runBtn = getRunBtnAdvancedS3();
     const outputDiv = getOutputAdvancedS3();
 
     if (runBtn) runBtn.disabled = true;
     if (outputDiv) outputDiv.innerHTML = '';
 
-    logS3(`==== INICIANDO Script 3: Teste UAF/TC com toJSON Detalhada, Ctrl Profundidade e Teste Slice ====`,'test', FNAME);
-    document.title = "Iniciando Script 3 - UAF/TC com Ctrl Profundidade e Slice";
+    logS3(`==== INICIANDO Script 3: Teste UAF/TC com toJSON Detalhada e Profundidade Variável ====`,'test', FNAME);
+    document.title = "Iniciando Script 3 - UAF/TC Profundidade Variável";
     
-    await runUAFTC_With_ToJSON_DepthControlAndSlice();
+    await runUAFTC_With_ToJSON_DepthControlAndSlice_VariableDepth(); // Nome da função atualizado
     
-    logS3(`\n==== Script 3 CONCLUÍDO (Teste UAF/TC com toJSON Detalhada, Ctrl Profundidade e Teste Slice) ====`,'test', FNAME);
+    logS3(`\n==== Script 3 CONCLUÍDO (Teste UAF/TC com toJSON Detalhada e Profundidade Variável) ====`,'test', FNAME);
     if (runBtn) runBtn.disabled = false;
 }
