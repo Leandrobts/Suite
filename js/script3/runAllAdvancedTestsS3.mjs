@@ -1,54 +1,49 @@
 // js/script3/runAllAdvancedTestsS3.mjs
-import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3 } from './s3_utils.mjs';
+import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3, SHORT_PAUSE_S3 } from './s3_utils.mjs';
 import { getOutputAdvancedS3, getRunBtnAdvancedS3 } from '../dom_elements.mjs';
-// A função detailed_toJSON_for_UAF_TC_test_WithDepthControl_AndSlice está agora em testJsonTypeConfusionUAFSpeculative.mjs
-// e é usada por executeUAFTypeConfusionTestWithValue.
-import { executeUAFTypeConfusionTestWithValue } from './testJsonTypeConfusionUAFSpeculative.mjs';
-import { OOB_CONFIG } from '../config.mjs'; 
-import { toHex } from '../utils.mjs';
+
+import { testWebAssemblyInterface } from './testWebAssemblyInterface.mjs';
+import { testSharedArrayBufferSupport } from './testSharedArrayBufferSupport.mjs';
+import { explainMemoryPrimitives } from './explainMemoryPrimitives.mjs';
+import { testJsonTypeConfusionUAFSpeculative } from './testJsonTypeConfusionUAFSpeculative.mjs'; // Seu script original que congela
+import { testCoreExploitModule } from '../core_exploit.mjs'; 
+import { testCorruptArrayBufferStructure } from './testCorruptArrayBufferStructure.mjs';
 
 
-async function runUAFTC_With_ToJSON_DepthControlAndSlice_VariableDepth() { // Nome um pouco mais genérico
-    const FNAME_RUNNER = "runUAFTC_With_ToJSON_VariableDepth"; // Nome atualizado
-    logS3(`==== INICIANDO Teste UAF/TC com toJSON Detalhada e Profundidade Variável ====`, 'test', FNAME_RUNNER);
-
-    const criticalValue = 0xFFFFFFFF; 
-    const testDescription = `UAFTC_VariableDepth_Val_FFFF_Offset0x70`; // Descrição atualizada
-
-    logS3(`\n--- Executando Teste UAF/TC: ${testDescription} ---`, 'subtest', FNAME_RUNNER);
-    
-    let result = await executeUAFTypeConfusionTestWithValue(
-        testDescription,
-        criticalValue
-    );
-
-    if (result.potentiallyFroze) {
-        logS3(`   RESULTADO ${testDescription}: CONGELAMENTO POTENCIAL. Chamadas toJSON: ${result.calls}`, "error", FNAME_RUNNER);
-    } else if (result.errorOccurred) {
-        logS3(`   RESULTADO ${testDescription}: ERRO JS CAPTURADO: ${result.errorOccurred.name} - ${result.errorOccurred.message}. Chamadas toJSON: ${result.calls}`, "warn", FNAME_RUNNER);
-    } else {
-        logS3(`   RESULTADO ${testDescription}: Completou. Chamadas toJSON: ${result.calls}`, "good", FNAME_RUNNER);
-        logS3(`      Stringify Result: ${String(result.stringifyResult).substring(0,200)}`, "info", FNAME_RUNNER);
-    }
-    await PAUSE_S3(MEDIUM_PAUSE_S3);
-    logS3(`   Título da página após teste ${testDescription}: ${document.title}`, "info");
-
-    logS3(`==== Teste UAF/TC com toJSON Detalhada e Profundidade Variável CONCLUÍDO ====`, 'test', FNAME_RUNNER);
-}
-
-export async function runAllAdvancedTestsS3() {
-    const FNAME = 'runAllAdvancedTestsS3_UAFTC_VariableDepth'; // Nome atualizado
+export async function runAllAdvancedTestsS3() { 
+    const FNAME = 'runAllAdvancedTestsS3_OriginalFreezingDebug'; // Nomeado para clareza
     const runBtn = getRunBtnAdvancedS3();
     const outputDiv = getOutputAdvancedS3();
 
     if (runBtn) runBtn.disabled = true;
     if (outputDiv) outputDiv.innerHTML = '';
 
-    logS3(`==== INICIANDO Script 3: Teste UAF/TC com toJSON Detalhada e Profundidade Variável ====`,'test', FNAME);
-    document.title = "Iniciando Script 3 - UAF/TC Profundidade Variável";
-    
-    await runUAFTC_With_ToJSON_DepthControlAndSlice_VariableDepth(); // Nome da função atualizado
-    
-    logS3(`\n==== Script 3 CONCLUÍDO (Teste UAF/TC com toJSON Detalhada e Profundidade Variável) ====`,'test', FNAME);
+    logS3("==== INICIANDO Script 3: DEBUG DO CONGELAMENTO ORIGINAL ====", 'test', FNAME);
+
+    // PARA ACELERAR A DEPURAÇÃO DO testJsonTypeConfusionUAFSpeculative:
+    // Comente os outros testes temporariamente se desejar focar nele.
+    /* await testWebAssemblyInterface();
+    await PAUSE_S3(MEDIUM_PAUSE_S3);
+
+    await testSharedArrayBufferSupport();
+    await PAUSE_S3(MEDIUM_PAUSE_S3);
+
+    explainMemoryPrimitives();
+    await PAUSE_S3(SHORT_PAUSE_S3);
+    */
+
+    logS3("Executando testJsonTypeConfusionUAFSpeculative (ORIGINAL CONGELANTE)...", "warn", FNAME);
+    await testJsonTypeConfusionUAFSpeculative(); // Este é o seu script que itera e congela
+    await PAUSE_S3(MEDIUM_PAUSE_S3);
+
+    /*
+    await testCorruptArrayBufferStructure(); 
+    await PAUSE_S3(MEDIUM_PAUSE_S3);
+
+    await testCoreExploitModule(logS3); 
+    await PAUSE_S3(MEDIUM_PAUSE_S3);
+    */
+
+    logS3("\n==== Script 3 CONCLUÍDO (DEBUG DO CONGELAMENTO ORIGINAL) ====", 'test', FNAME);
     if (runBtn) runBtn.disabled = false;
 }
