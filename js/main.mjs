@@ -9,6 +9,7 @@ import {
 import { runAllTestsS1 } from './script1/runAllTestsS1.mjs';
 import { runCanvasTest } from './script2/runCanvasTestSequence.mjs'; 
 import { runAllAdvancedTestsS3 } from './script3/runAllAdvancedTestsS3.mjs';
+import { runCorruptArrayBufferTest } from './script3/run_corrupt_arraybuffer_test.mjs';
 
 // Importar handlers para ferramentas interativas do Script 3
 import { buildRopChainFromUI } from './script3/rop_builder.mjs'; // Nome usado no exemplo anterior
