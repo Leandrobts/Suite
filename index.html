@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html>
 <head>
@@ -9,7 +10,7 @@
             background: #222;
             border: 1px solid #444;
             padding: 10px;
-            height: 75vh;
+            height: 75vh; /* Ajustado para visualização */
             overflow-y: auto;
             white-space: pre-wrap;
             margin-top: 10px;
@@ -52,23 +53,8 @@
     <section class="tool-section">
         <h2>Ferramentas e Testes Avançados - Script 3</h2>
         <p>Testes adicionais, ferramentas conceituais e primitivas de baixo nível (simuladas/educacionais).</p>
-        
-        <!-- Botões de Controle Atualizados -->
-        <div style="margin-bottom: 15px;">
-            <button id="runAdvancedBtnS3">Executar Todos Testes Avançados</button>
-            <button id="runCorruptABTestBtn" style="margin-left: 10px;">Teste Corrupção ArrayBuffer</button>
-        </div>
+        <button id="runAdvancedBtnS3">Iniciar Testes Avançados S3</button>
 
-        <!-- Configuração OOB -->
-        <div class="tool-section" style="margin-top: 15px;">
-            <h3>Controle de Memória OOB</h3>
-            <input type="number" id="oobAllocSize" placeholder="Tamanho Alocação" value="32768" style="width: 120px;">
-            <input type="number" id="baseOffset" placeholder="Base Offset" value="128" style="width: 100px;">
-            <input type="number" id="initialBufSize" placeholder="Tamanho Inicial" value="32" style="width: 100px;">
-            <button id="updateOOBConfigBtn">Aplicar Config</button>
-        </div>
-
-        <!-- Ferramentas Conceituais -->
         <div id="rop-builder" class="tool-section" style="margin-top:15px;">
             <h3>Construtor de Cadeia ROP (Conceitual)</h3>
             <textarea id="rop-gadgets-input" rows="5" placeholder="EndereçoGadget1=Nome (ex: 0x41414141=pop_rax_ret)&#10;EndereçoGadget2=Nome"></textarea><br>
@@ -81,22 +67,11 @@
             <input type="text" id="mem-view-addr" placeholder="Endereço (ex: 0x12345000)">
             <input type="text" id="mem-view-size" placeholder="Tamanho (bytes, ex: 64)">
             <button id="viewMemoryBtn">Visualizar Memória</button>
-            <p style="font-size:0.8em;">Nota: Simulação apenas. Sem exploit real.</p>
+            <p style="font-size:0.8em;">Nota: Isso simula a leitura. Nenhuma leitura real de memória arbitrária ocorre sem um exploit.</p>
         </div>
-        
         <div id="output-advanced"></div>
     </section>
 
-    <script type="module">
-        // Importações Principais
-        import { runAllAdvancedTestsS3 } from './js/script3/runAllAdvancedTestsS3.mjs';
-        import { runCorruptArrayBufferTest } from './js/script3/run_corrupt_arraybuffer_test.mjs';
-        import { updateOOBConfigFromUI } from './js/config.mjs';
-
-        // Configurar Event Listeners
-        document.getElementById('runAdvancedBtnS3').addEventListener('click', () => runAllAdvancedTestsS3());
-        document.getElementById('runCorruptABTestBtn').addEventListener('click', () => runCorruptArrayBufferTest());
-        document.getElementById('updateOOBConfigBtn').addEventListener('click', () => updateOOBConfigFromUI(document));
-    </script>
+    <script type="module" src="js/main.mjs"></script>
 </body>
 </html>
