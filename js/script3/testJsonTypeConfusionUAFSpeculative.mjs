@@ -18,7 +18,7 @@ export let currentCallCount_for_UAF_TC_test = 0;
 // ##########################################################################
 // # MODIFIQUE ESTA LINHA PARA CADA TESTE DE PROFUNDIDADE:                  #
 // # Exemplos: 50, 100, 250, 500, 1000, 2000                               #
-const MAX_toJSON_DEPTH_FOR_ANALYSIS = 2000; // COMECE COM 50 PARA O PRÓXIMO TESTE
+const MAX_toJSON_DEPTH_FOR_ANALYSIS = 3000; // COMECE COM 50 PARA O PRÓXIMO TESTE
 // ##########################################################################
 
 export function detailed_toJSON_for_UAF_TC_test_WithDepthControl_AndSlice() { // Mantenha o nome original da função
