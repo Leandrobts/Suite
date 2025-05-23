@@ -95,16 +95,16 @@ export function toJSON_ExploitTypeConfusion_IterativeReturn() { // Nome da funç
            // return undefined;
 
             // OPÇÃO 2: Retornar null (DESCOMENTE ESTE E COMENTE A OPÇÃO 1)
-            logS3(`  [CALL ${callCount_toJSON_exploit_tc}] Bloco ELSE: PREPARANDO PARA RETORNAR 'null'.`, "info");
-             document.title = `toJSON Retornando NULL (this mismatch) - Call ${callCount_toJSON_exploit_tc}`;
-            return null;
+           // logS3(`  [CALL ${callCount_toJSON_exploit_tc}] Bloco ELSE: PREPARANDO PARA RETORNAR 'null'.`, "info");
+            // document.title = `toJSON Retornando NULL (this mismatch) - Call ${callCount_toJSON_exploit_tc}`;
+           // return null;
 
             // OPÇÃO 3: Retornar um booleano (DESCOMENTE ESTE E COMENTE AS ANTERIORES)
-            // logS3(`  [CALL ${callCount_toJSON_exploit_tc}] Bloco ELSE: PREPARANDO PARA RETORNAR 'true'.`, "info");
-            // document.title = `toJSON Retornando TRUE (this mismatch) - Call ${callCount_toJSON_exploit_tc}`;
-            // return true;
+             logS3(`  [CALL ${callCount_toJSON_exploit_tc}] Bloco ELSE: PREPARANDO PARA RETORNAR 'true'.`, "info");
+            document.title = `toJSON Retornando TRUE (this mismatch) - Call ${callCount_toJSON_exploit_tc}`;
+             return true;
 
-            // OPÇÃO 4: Retornar um objeto muito simples (DESCOMENTE ESTE E COMENTE AS ANTERIORES)
+             OPÇÃO 4: Retornar um objeto muito simples (DESCOMENTE ESTE E COMENTE AS ANTERIORES)
             logS3(`  [CALL ${callCount_toJSON_exploit_tc}] Bloco ELSE: PREPARANDO PARA RETORNAR '{ simple_payload_on_mismatch: true }'.`, "info");
             document.title = `toJSON Retornando OBJ SIMPLES (this mismatch) - Call ${callCount_toJSON_exploit_tc}`;
             return { simple_payload_on_mismatch: true, call_number: callCount_toJSON_exploit_tc };
