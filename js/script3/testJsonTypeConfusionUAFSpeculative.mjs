@@ -104,10 +104,10 @@ export function toJSON_ExploitTypeConfusion_IterativeReturn() { // Nome da funç
             document.title = `toJSON Retornando TRUE (this mismatch) - Call ${callCount_toJSON_exploit_tc}`;
              return true;
 
-             OPÇÃO 4: Retornar um objeto muito simples (DESCOMENTE ESTE E COMENTE AS ANTERIORES)
-            logS3(`  [CALL ${callCount_toJSON_exploit_tc}] Bloco ELSE: PREPARANDO PARA RETORNAR '{ simple_payload_on_mismatch: true }'.`, "info");
-            document.title = `toJSON Retornando OBJ SIMPLES (this mismatch) - Call ${callCount_toJSON_exploit_tc}`;
-            return { simple_payload_on_mismatch: true, call_number: callCount_toJSON_exploit_tc };
+           //  OPÇÃO 4: Retornar um objeto muito simples (DESCOMENTE ESTE E COMENTE AS ANTERIORES)
+            //logS3(`  [CALL ${callCount_toJSON_exploit_tc}] Bloco ELSE: PREPARANDO PARA RETORNAR '{ simple_payload_on_mismatch: true }'.`, "info");
+           // document.title = `toJSON Retornando OBJ SIMPLES (this mismatch) - Call ${callCount_toJSON_exploit_tc}`;
+           // return { simple_payload_on_mismatch: true, call_number: callCount_toJSON_exploit_tc };
             
             // ***** FIM DA SEÇÃO DE TESTE DE RETORNO *****
         }
