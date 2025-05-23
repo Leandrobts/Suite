@@ -14,35 +14,19 @@ import { testCorruptArrayBufferStructure } from './testCorruptArrayBufferStructu
 */
 
 export async function runAllAdvancedTestsS3() { 
-    const FNAME = 'runAllAdvancedTestsS3_FocusOriginalCrashScenario';
+    const FNAME = 'runAllAdvancedTestsS3_AttemptTypeConfusionExploit';
     const runBtn = getRunBtnAdvancedS3();
     const outputDiv = getOutputAdvancedS3();
 
     if (runBtn) runBtn.disabled = true;
     if (outputDiv) outputDiv.innerHTML = '';
 
-    logS3("==== INICIANDO Script 3: Foco no Cenário de Crash Original com Stringify ====",'test', FNAME);
-    document.title = "Iniciando Script 3 - Foco Crash Stringify";
+    logS3("==== INICIANDO Script 3: Tentativa de Exploração de Type Confusion ====",'test', FNAME);
+    document.title = "Iniciando Script 3 - Tentativa Exploração TC";
 
-    /* Comente outros testes para focar
-    await testWebAssemblyInterface();
-    await PAUSE_S3(MEDIUM_PAUSE_S3);
-    await testSharedArrayBufferSupport();
-    await PAUSE_S3(MEDIUM_PAUSE_S3);
-    explainMemoryPrimitives();
-    await PAUSE_S3(SHORT_PAUSE_S3);
-    */
-
-    await testJsonTypeConfusionUAFSpeculative(); // Chama a função que agora executa o teste focado
+    await testJsonTypeConfusionUAFSpeculative(); // Chama a função que agora executa o teste focado de exploração
     await PAUSE_S3(MEDIUM_PAUSE_S3);
     
-    /*
-    await testCorruptArrayBufferStructure(); 
-    await PAUSE_S3(MEDIUM_PAUSE_S3);
-    await testCoreExploitModule(logS3); 
-    await PAUSE_S3(MEDIUM_PAUSE_S3);
-    */
-
-    logS3("\n==== Script 3 CONCLUÍDO (Foco no Cenário de Crash Original com Stringify) ====",'test', FNAME);
+    logS3("\n==== Script 3 CONCLUÍDO (Tentativa de Exploração de Type Confusion) ====", 'test', FNAME);
     if (runBtn) runBtn.disabled = false;
 }
