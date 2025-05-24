@@ -31,7 +31,7 @@ export async function executeFocusedTestForTypeError(
     if (!oob_array_buffer_real) {
         logS3("Falha OOB Setup.", "error", FNAME);
         document.title = "ERRO OOB Setup - " + FNAME;
-        return { errorOccurred: new Error("OOB Setup Failed"), calls: current_toJSON_call_count_for_TypeError_test, potentiallyCrashed: false, stringifyResult: null };
+        return { errorOccurred: new Error("OOB Setup Failed"), calls: current_toJSON_call_count_for_TypeError_test, potentiallyCrashed: false };
     }
     document.title = "OOB OK - " + FNAME;
 
