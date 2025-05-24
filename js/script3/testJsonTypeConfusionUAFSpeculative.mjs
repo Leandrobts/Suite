@@ -20,7 +20,7 @@ export let currentCallCount_for_UAF_TC_test = 0;
 // ##########################################################################
 // # MODIFIQUE ESTA LINHA PARA CADA TESTE DE PROFUNDIDADE:                  #
 // # SUGESTÕES: 20, 50, 100, 250, 500, 1000, 2000                           #
-const MAX_toJSON_DEPTH_FOR_ANALYSIS = 5000; // COMECE COM 20 OU 50 PARA O PRÓXIMO TESTE
+const MAX_toJSON_DEPTH_FOR_ANALYSIS = 8000; // COMECE COM 20 OU 50 PARA O PRÓXIMO TESTE
 // ##########################################################################
 
 // Esta é a toJSON que sonda 'this', tem controle de profundidade e tenta slice na Call 1
