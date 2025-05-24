@@ -1,11 +1,10 @@
 // js/script3/runAllAdvancedTestsS3.mjs
 import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3 } from './s3_utils.mjs';
 import { getOutputAdvancedS3, getRunBtnAdvancedS3 } from '../dom_elements.mjs';
-// Atualize para importar a nova função de teste
-import { executeCorruptAndReadZoneTest } from './testCorruptAndReadZone.mjs'; 
-// (Certifique-se de que o nome do arquivo acima é 'testCorruptAndReadZone.mjs' ou ajuste a importação)
-// Se você manteve o nome testJsonTypeConfusionUAFSpeculative.mjs, use:
-// import { executeCorruptAndReadZoneTest } from './testJsonTypeConfusionUAFSpeculative.mjs';
+// A função agora é importada do arquivo que a contém
+import { executeCorruptAndReadZoneTest } from './testJsonTypeConfusionUAFSpeculative.mjs'; 
+// ^^^ Certifique-se que este nome de arquivo ('testJsonTypeConfusionUAFSpeculative.mjs') 
+// é onde você colou o código do Bloco 1 acima.
 
 import { OOB_CONFIG } from '../config.mjs';
 import { toHex } from '../utils.mjs';
@@ -19,9 +18,12 @@ async function runCorruptAndReadZoneInvestigation() {
 
     await executeCorruptAndReadZoneTest(corruptionOffset, valueToWrite);
 
-    // Poderia adicionar aqui testes com outros valores de corrupção se desejado
+    // Você pode adicionar mais chamadas com diferentes 'valueToWrite' ou 'corruptionOffset' aqui se desejar.
+    // Exemplo:
     // await PAUSE_S3(MEDIUM_PAUSE_S3);
-    // await executeCorruptAndReadZoneTest(corruptionOffset, 0xAAAAAAAA);
+    // logS3(`\n--- Testando Corrupção em ${toHex(corruptionOffset)} com valor 0x00000000 ---`, 'subtest', FNAME_RUNNER);
+    // await executeCorruptAndReadZoneTest(corruptionOffset, 0x00000000);
+
 
     logS3(`==== Investigação de Corrupção e Leitura de Zona CONCLUÍDA ====`, 'test', FNAME_RUNNER);
 }
