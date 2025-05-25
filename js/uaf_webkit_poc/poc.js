@@ -7,7 +7,7 @@ let sprayArraysGlobalRef = null;
 // ##################################################################################
 // # MODIFIQUE AQUI O PADRÃO DE SPRAY PARA CADA TESTE                               #
 // # Exemplos de padrões QWORD (8 bytes, little-endian):                            #
-// # const currentSprayPattern = [0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]; // QWORD  1 - Já testado
+const currentSprayPattern = [0xEF, 0xBE, 0xAD, 0xDE, 0xEF, 0xBE, 0xAD, 0xDE];
 // # const currentSprayPattern = [0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42]; // QWORD 0x42... - Já testado
 //  # const currentSprayPattern = [0xFE, 0xBE, 0xAD, 0xDE, 0xFE, 0xBE, 0xAD, 0xDE]; // QWORD 0xDEADBEEFDEADBEEF - Já testado
 //  # const currentSprayPattern = [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]; // QWORD 0 (Nulo)Já testado
