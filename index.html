@@ -5,7 +5,7 @@
     <title>Suite de Vulnerabilidades Avançada (Modular)</title>
     <style>
         body { background: #111; color: #eee; font-family: monospace; padding: 15px; font-size: 14px; }
-        #output, #output-canvas, #output-advanced, #output-uaf { /* Adicionado output-uaf, embora não usado pelo debug_log do PSFree diretamente */
+        #output, #output-canvas, #output-advanced {
             background: #222;
             border: 1px solid #444;
             padding: 10px;
@@ -22,8 +22,6 @@
         #interactive-canvas { display: block; border: 1px solid #444; margin-top: 5px; background-color: #333; cursor: default; }
         #canvas-coord-status { color: #aaa; font-size: 12px; height: 15px; }
         hr { border: 1px solid #555; margin: 20px 0; }
-        .section-container { margin-bottom: 20px; padding: 15px; border: 1px solid #333; background-color: #1e1e1e; }
-        .section-container h2 { margin-top: 0; color: #00bcd4; }
         .tool-section { margin-top: 20px; padding: 10px; border: 1px solid #555; background-color: #1a1a1a; }
         .tool-section h3 { margin-top: 0; color: #00FFFF; }
         .tool-section input[type="text"], .tool-section textarea { background-color: #333; color: #eee; border: 1px solid #555; padding: 5px; margin-right: 5px; width: 200px; }
@@ -32,17 +30,15 @@
     </style>
 </head>
 <body>
-    <section class="section-container">
-        <h2>Testes de Vulnerabilidade - Script Principal</h2>
-        <p>Testa: XSS++, OOB R/W (Tipos), PP Básica/Hijack, IndexedDB++, DOM Stress, APIs Web.</p>
-        <button id="runBtnS1">Iniciar Testes S1</button>
-        <div id="output"></div>
-        <div id="xss-target-div">Área para teste de XSS DOM.</div>
-    </section>
+    <h1>Testes de Vulnerabilidade - Script Principal</h1>
+    <p>Testa: XSS++, OOB R/W (Tipos), PP Básica/Hijack, IndexedDB++, DOM Stress, APIs Web.</p>
+    <button id="runBtnS1">Iniciar Testes S1</button>
+    <div id="output"></div>
+    <div id="xss-target-div">Área para teste de XSS DOM.</div>
 
     <hr>
 
-    <section class="section-container">
+    <section>
         <h2>Suite de Vulnerabilidades - Canvas e APIs Avançadas</h2>
         <p>Foco: PP Avançado++, OOB R/W (Metadata/ImageData), API Checks (GL/GPU/FS), Canvas Interact.</p>
         <canvas id="interactive-canvas" width="300" height="100"></canvas>
@@ -53,7 +49,7 @@
 
     <hr>
 
-    <section class="section-container">
+    <section class="tool-section">
         <h2>Ferramentas e Testes Avançados - Script 3</h2>
         <p>Testes adicionais, ferramentas conceituais e primitivas de baixo nível (simuladas/educacionais).</p>
         <button id="runAdvancedBtnS3">Iniciar Testes Avançados S3</button>
@@ -75,16 +71,6 @@
         <div id="output-advanced"></div>
     </section>
 
-    <hr>
-
-    <section class="section-container">
-        <h2>Teste de UAF WebKit (content-visibility)</h2>
-        <p>Baseado na PoC fornecida. Pressione o botão para tentar acionar o Use-After-Free. Observe o console do navegador e o final desta página para logs/crashes.</p>
-        <button id="runUAFBtn">Iniciar Teste UAF WebKit</button>
-        <div class="container" style="overflow: hidden; content-visibility: auto; transform: translateZ(0); position: relative; width: 200px; height: 200px; border:1px solid #777; margin-top:10px;">
-          <div class="child" style="width: 100px; height: 100px; position: absolute; top: 0; left: 0; background: blue; transform: translateZ(0);"></div>
-        </div>
-        </section>
     <script type="module" src="js/main.mjs"></script>
 </body>
 </html>
