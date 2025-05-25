@@ -11,16 +11,19 @@ import { runCanvasTest } from './script2/runCanvasTestSequence.mjs';
 import { runAllAdvancedTestsS3 } from './script3/runAllAdvancedTestsS3.mjs';
 
 // Importar handlers para ferramentas interativas do Script 3
-import { buildRopChainFromUI } from './script3/rop_builder.mjs'; // Nome usado no exemplo anterior
-import { viewMemoryFromUI } from './script3/memory_viewer.mjs'; // Nome usado no exemplo anterior
+import { buildRopChainFromUI } from './script3/rop_builder.mjs';
+import { viewMemoryFromUI } from './script3/memory_viewer.mjs';
 
 // Para o cleanup do S2
 import { getCanvasClickListenerS2, getCanvasMoveListenerS2, getGpuDeviceS2, clearS2State } from './state.mjs';
 
+// --- NOVA IMPORTAÇÃO PARA O TESTE DE UAF ---
+import { triggerUAF } from './uaf_webkit_poc/poc.js'; 
+// ^^^ Assume que poc.js estará em js/uaf_webkit_poc/poc.js
 
 function initialize() {
     console.log("Initializing Vulnerability Suite (Modular - Full Orchestration)...");
-    cacheCommonElements(); // Opcional: Pré-cache de elementos DOM comuns
+    cacheCommonElements();
 
     // Botão Script 1
     const btnS1 = getRunBtnS1();
@@ -101,14 +104,30 @@ function initialize() {
             }
         });
     } else { console.warn("Botão 'viewMemoryBtn' não encontrado."); }
+
+    // --- NOVO BOTÃO E EVENT LISTENER PARA O TESTE DE UAF ---
+    const btnUAF = document.getElementById('runUAFBtn');
+    if (btnUAF) {
+        btnUAF.addEventListener('click', () => {
+            console.log("Botão Teste UAF WebKit Clicado");
+            try {
+                // Os elementos .container e .child são pegos diretamente pelo poc.js do DOM global
+                triggerUAF(); 
+                // O poc.js usa seu próprio debug_log, que anexa <p> ao final do body.
+            } catch (e) {
+                console.error("Erro ao executar Teste UAF WebKit:", e);
+                alert(`Erro Teste UAF WebKit: ${e.message}`);
+            }
+        });
+    } else { console.warn("Botão 'runUAFBtn' não encontrado."); }
+    // --- FIM DO NOVO BOTÃO ---
     
-    // Configura cleanup para listeners do S2 no unload (lógica original do HTML)
     window.addEventListener('unload', () => {
         console.log("[main.mjs] Tentando limpeza no evento 'unload'...");
         try {
-            const canvasElementS2 = getInteractiveCanvasS2(); // Usa o getter de dom_elements
-            const clickListener = getCanvasClickListenerS2(); // Pega do estado
-            const moveListener = getCanvasMoveListenerS2();   // Pega do estado
+            const canvasElementS2 = getInteractiveCanvasS2();
+            const clickListener = getCanvasClickListenerS2();
+            const moveListener = getCanvasMoveListenerS2();  
 
             if (clickListener && canvasElementS2) {
                 canvasElementS2.removeEventListener('click', clickListener);
@@ -119,14 +138,11 @@ function initialize() {
                 console.log("Listener de movimento do mouse do Canvas S2 removido.");
             }
             
-            const gpuDev = getGpuDeviceS2(); // Pega do estado
+            const gpuDev = getGpuDeviceS2(); 
             if (gpuDev && typeof gpuDev.destroy === 'function') {
-                // A especificação WebGPU sugere que 'destroy' deve ser chamado para liberar recursos.
-                // No entanto, chamar no 'unload' pode ser problemático ou desnecessário se o navegador já o faz.
                 // gpuDev.destroy(); 
-                // console.log("Dispositivo WebGPU (S2) .destroy() chamado.");
             }
-            clearS2State(); // Limpa o estado relacionado ao S2
+            clearS2State(); 
             console.log("Estado do S2 limpo.");
 
         } catch (e) {
@@ -138,9 +154,8 @@ function initialize() {
     console.log("Vulnerability Suite (Modular - Full Orchestration) Inicializada.");
 }
 
-// Garante que o DOM esteja pronto antes de executar a inicialização
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initialize);
 } else {
-    initialize(); // DOM já carregado
+    initialize(); 
 }
