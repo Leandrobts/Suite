@@ -113,7 +113,8 @@ export async function runAllAdvancedTestsS3() {
     if (runBtn) runBtn.disabled = true;
     if (outputDiv) outputDiv.innerHTML = '';
 
-    logS3(`==== INICIANDO Script 3: Decomposição Ultra-Minimalista do Gatilho do TypeError (Foco no \`victim_ab\`) ====`,'test', FNAME);
+    // LINHA CORRIGIDA ABAIXO:
+    logS3(`==== INICIANDO Script 3: Decomposição Ultra-Minimalista do Gatilho do TypeError (Foco no \\\`victim_ab\\\`) ====`,'test', FNAME);
     document.title = "Iniciando Script 3 - Decomp UltraMinimal (victim_ab)";
     
     await runUltraMinimalDecompositionForTypeError(); // Nome da função atualizado
