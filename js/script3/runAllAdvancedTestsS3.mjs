@@ -2,7 +2,7 @@
 import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3 } from './s3_utils.mjs';
 import { getOutputAdvancedS3, getRunBtnAdvancedS3 } from '../dom_elements.mjs';
 import { executeFocusedTestForTypeError, current_toJSON_call_count_for_TypeError_test } from './testJsonTypeConfusionUAFSpeculative.mjs';
-import { OOB_CONFIG } from '../config.mjs'; 
+import { OOB_CONFIG } from '../config.mjs';
 import { toHex } from '../utils.mjs';     
 
 // --- Funções toJSON para teste de decomposição ULTRA MINIMALISTA ---
@@ -113,7 +113,8 @@ export async function runAllAdvancedTestsS3() {
     if (runBtn) runBtn.disabled = true;
     if (outputDiv) outputDiv.innerHTML = '';
 
-    logS3(`==== INICIANDO Script 3: Decomposição Ultra-Minimalista do Gatilho do TypeError (Foco no `victim_ab`) ====`,'test', FNAME);
+    // LINHA CORRIGIDA ABAIXO:
+    logS3(`==== INICIANDO Script 3: Decomposição Ultra-Minimalista do Gatilho do TypeError (Foco no \\\`victim_ab\\\`) ====`,'test', FNAME);
     document.title = "Iniciando Script 3 - Decomp UltraMinimal (victim_ab)";
     
     await runUltraMinimalDecompositionForTypeError(); // Nome da função atualizado
