@@ -1,7 +1,7 @@
 // js/script3/runAllAdvancedTestsS3.mjs
 import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3 } from './s3_utils.mjs';
 import { getOutputAdvancedS3, getRunBtnAdvancedS3 } from '../dom_elements.mjs';
-// Importa a função de teste do NOVO arquivo
+// Importa a função de teste do arquivo correto
 import { executeCorruptArrayBufferContentsSizeTest } from './testCorruptArrayBufferContents.mjs'; 
 
 import { OOB_CONFIG } from '../config.mjs'; 
