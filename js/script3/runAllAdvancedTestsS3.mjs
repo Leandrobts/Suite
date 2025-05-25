@@ -1,35 +1,36 @@
 // js/script3/runAllAdvancedTestsS3.mjs
 import { logS3, PAUSE_S3, MEDIUM_PAUSE_S3 } from './s3_utils.mjs';
 import { getOutputAdvancedS3, getRunBtnAdvancedS3 } from '../dom_elements.mjs';
-// Importa a função de teste do arquivo correto
-import { executeCorruptArrayBufferContentsSizeTest } from './testCorruptArrayBufferContents.mjs'; 
+// Importa a nova função de teste
+import { executeValidateReadPrimitiveAndDumpStartTest } from './testOOBReadValidation.mjs'; 
 
-import { OOB_CONFIG } from '../config.mjs'; 
-import { toHex } from '../utils.mjs';     
+// OOB_CONFIG e toHex podem ser necessários por outros testes, mas não diretamente aqui.
+// import { OOB_CONFIG } from '../config.mjs'; 
+// import { toHex } from '../utils.mjs';     
 
-async function runAdvancedArrayBufferCorruptionStrategy() {
-    const FNAME_RUNNER = "runAdvancedArrayBufferCorruptionStrategy";
-    logS3(`==== INICIANDO Estratégia Avançada de Corrupção de ArrayBufferContents ====`, 'test', FNAME_RUNNER);
+async function runOOBReadValidationAndInitialDump() {
+    const FNAME_RUNNER = "runOOBReadValidationAndInitialDump";
+    logS3(`==== INICIANDO Validação de Leitura OOB e Dump Inicial ====`, 'test', FNAME_RUNNER);
     
-    await executeCorruptArrayBufferContentsSizeTest();
+    await executeValidateReadPrimitiveAndDumpStartTest();
     
-    logS3(`==== Estratégia Avançada de Corrupção de ArrayBufferContents CONCLUÍDA ====`, 'test', FNAME_RUNNER);
+    logS3(`==== Validação de Leitura OOB e Dump Inicial CONCLUÍDOS ====`, 'test', FNAME_RUNNER);
 }
 
 export async function runAllAdvancedTestsS3() {
-    const FNAME = 'runAllAdvancedTestsS3_CorruptABContentsSize';
+    const FNAME = 'runAllAdvancedTestsS3_ValidateOOBReadAndDump';
     const runBtn = getRunBtnAdvancedS3();
     const outputDiv = getOutputAdvancedS3();
 
     if (runBtn) runBtn.disabled = true;
     if (outputDiv) outputDiv.innerHTML = '';
 
-    logS3(`==== INICIANDO Script 3: Teste de Corrupção de Tamanho em ArrayBufferContents ====`,'test', FNAME);
-    document.title = "Iniciando Script 3 - Corrupt ABContents Size";
+    logS3(`==== INICIANDO Script 3: Validação de Leitura OOB e Dump Inicial do Buffer ====`,'test', FNAME);
+    document.title = "Iniciando Script 3 - Valid. Leitura & Dump";
     
-    await runAdvancedArrayBufferCorruptionStrategy();
+    await runOOBReadValidationAndInitialDump();
     
-    logS3(`\n==== Script 3 CONCLUÍDO (Teste de Corrupção de Tamanho em ArrayBufferContents) ====`,'test', FNAME);
+    logS3(`\n==== Script 3 CONCLUÍDO (Validação de Leitura OOB e Dump Inicial) ====`,'test', FNAME);
     if (runBtn) runBtn.disabled = false;
     
     if (document.title.startsWith("Iniciando") || document.title.includes("ERRO") || document.title.includes("CONGELOU?")) {
@@ -38,6 +39,6 @@ export async function runAllAdvancedTestsS3() {
         // Manter
     }
     else {
-        document.title = "Script 3 Concluído - Corrupt ABContents Size";
+        document.title = "Script 3 Concluído - Valid. Leitura & Dump";
     }
 }
