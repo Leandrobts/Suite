@@ -22,10 +22,10 @@ export async function runAllAdvancedTestsS3() {
     await PAUSE_S3(MEDIUM_PAUSE_S3);
 
     let proceedToFingerprint = true;
-    if (document.title.startsWith("CORRUPTED") || document.title.startsWith("SUCCESS") || document.title.includes("ERRO") || document.title.includes("CONGELOU?")) {
-        logS3("Resultado crítico ou erro no teste de Spray de Objetos Complexos. Verifique os logs antes de prosseguir com Fingerprinting se desejar.", "warn", FNAME);
-        // Você pode decidir se quer prosseguir ou não. Por ora, vamos prosseguir.
-        // proceedToFingerprint = false; 
+    // Verifica se o título indica um problema sério que impeça o próximo teste
+    if (document.title.includes("CORRUPTED") || document.title.includes("CRASH") || document.title.includes("ERRO")) {
+        logS3("Resultado crítico ou erro no teste de Spray de Objetos Complexos. Verifique os logs.", "warn", FNAME);
+        // Poderia definir proceedToFingerprint = false; se quisesse parar.
     }
 
     if (proceedToFingerprint) {
@@ -39,10 +39,10 @@ export async function runAllAdvancedTestsS3() {
     logS3(`\n==== Script 3 CONCLUÍDO (Corrupção Complexa & Fingerprint) ====`,'test', FNAME);
     if (runBtn) runBtn.disabled = false;
     
-    if (document.title.startsWith("Iniciando") || document.title.includes("ERRO") || document.title.includes("CONGELOU?")) {
+    if (document.title.startsWith("Iniciando") || document.title.includes("CONGELOU?")) {
         // Manter
-    } else if (document.title.includes("CORRUPTED") || document.title.includes("SUCCESS") || document.title.includes("MODIFIED")) {
-        // Manter
+    } else if (document.title.includes("CORRUPTED") || document.title.includes("SUCCESS") || document.title.includes("MODIFIED") || document.title.includes("ERRO")) {
+        // Manter títulos que indicam resultados específicos
     }
     else {
         document.title = "Script 3 Concluído - Complex & Fingerprint";
