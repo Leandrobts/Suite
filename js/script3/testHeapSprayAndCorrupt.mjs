@@ -115,7 +115,7 @@ export async function executeHeapSprayAndCorruptTest() {
     logS3(`--- Iniciando Teste: Heap Spray, Corrupção OOB, e Sondagem de Vítimas ---`, "test", FNAME_TEST);
     document.title = `HeapSpray & Corrupt`;
 
-    const spray_count = 200; // Número de ArrayBuffers para pulverizar
+    const spray_count = 20000; // Número de ArrayBuffers para pulverizar
     const victim_size = 64;   // Tamanho de cada ArrayBuffer pulverizado
     const sprayed_victim_array = [];
 
